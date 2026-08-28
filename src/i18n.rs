@@ -19,6 +19,7 @@ pub struct L {
     // 搜索/过滤
     pub search: &'static str,
     pub search_tip: &'static str,
+    pub search_clear_tip: &'static str,
     pub no_match: &'static str,
     // 状态/统计
     pub stat_total: &'static str,
@@ -63,6 +64,7 @@ pub const T: L = L {
     sort_hint: "点击列头可排序；再次点击切换升降序",
     search: "搜索…",
     search_tip: "按 操作名 / 中文描述 / 快捷键 过滤（不区分大小写）",
+    search_clear_tip: "清空搜索",
     no_match: "没有匹配的条目",
     stat_total: "条目总数",
     stat_dirty: "未保存",

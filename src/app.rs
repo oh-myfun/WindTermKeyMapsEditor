@@ -240,8 +240,6 @@ impl EditorApp {
     fn ui_toolbar(&mut self, ui: &mut egui::Ui) {
         ui.add_space(6.0);
         ui.horizontal_wrapped(|ui| {
-            ui.heading(T.app_title);
-            ui.separator();
             if ui.add(egui::Button::new(T.open)).on_hover_text(T.open_tip).clicked() {
                 self.pick_open_dialog();
             }
@@ -259,6 +257,15 @@ impl EditorApp {
                     .desired_width(220.0),
             );
             let _ = search_box.on_hover_text(T.search_tip);
+            // 一键清除：仅在已输入内容时显示
+            if !self.search.is_empty()
+                && ui
+                    .add(egui::Button::new("✕").frame(false).small())
+                    .on_hover_text(T.search_clear_tip)
+                    .clicked()
+            {
+                self.search.clear();
+            }
             ui.separator();
             if let Some(p) = &self.path {
                 ui.label(RichText::new(p.display().to_string()).weak().size(12.0));
