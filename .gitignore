@@ -2,6 +2,10 @@
 /target
 /.toolchain/
 
+# 端到端实测产物（模拟 WindTerm 安装目录的临时结构，不入库）
+/out/
+/selftest.log
+
 # 环境/编辑器
 /.cargo/local
 *.local.toml

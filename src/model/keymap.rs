@@ -135,16 +135,6 @@ impl KeymapFile {
         }
         issues
     }
-
-    /// 新增一条默认空绑定。
-    pub fn push_empty(&mut self) {
-        self.entries.push(KeymapEntry {
-            keys: String::new(),
-            modes: "normal".to_string(),
-            action: Some(String::new()),
-            script: None,
-        });
-    }
 }
 
 /// WindTerm 会在 `script` 字符串里写入真实的换行/制表符等控制字符（严格 RFC 8259 下非法）。

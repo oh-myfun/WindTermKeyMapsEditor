@@ -4,7 +4,7 @@
 
 use std::path::{Path, PathBuf};
 
-use eframe::egui::{self, Color32, RichText};
+use eframe::egui::{self, Color32, FontData, FontDefinitions, FontFamily, RichText};
 
 use crate::i18n::{EditRole, T};
 use crate::io::{create_backup, read_keymap, save_as, write_keymap};
@@ -32,7 +32,6 @@ pub struct EditorDraft {
 
 #[derive(Debug)]
 pub enum Confirm {
-    Remove(usize),
     SaveWithIssues { issues: Vec<String> },
     UnsavedClose,
     OpenReplace { path: PathBuf },
@@ -139,26 +138,6 @@ impl EditorApp {
         }
     }
 
-    pub fn add_entry(&mut self) {
-        self.file.push_empty();
-        let idx = self.file.len() - 1;
-        self.selected = Some(idx);
-        self.dirty = true;
-        self.begin_edit(idx);
-    }
-
-    pub fn remove_entry(&mut self, idx: usize) {
-        self.confirm = Some(Confirm::Remove(idx));
-    }
-
-    fn do_remove(&mut self, idx: usize) {
-        if idx < self.file.entries.len() {
-            self.file.entries.remove(idx);
-            self.dirty = true;
-            self.selected = None;
-        }
-    }
-
     // ---------- 编辑对话框 ----------
     pub fn begin_edit(&mut self, index: usize) {
         let Some(e) = self.file.entries.get(index).cloned() else {
@@ -261,13 +240,11 @@ impl eframe::App for EditorApp {
             }
         }
 
-        // 快捷键：Ctrl+O 打开、Ctrl+S 保存、Ctrl+N 新增、Delete 删除选中
-        let (ctrl_o, ctrl_s, ctrl_n, del) = ctx.input(|i| {
+        // 快捷键：Ctrl+O 打开、Ctrl+S 保存
+        let (ctrl_o, ctrl_s) = ctx.input(|i| {
             (
                 i.modifiers.command && i.key_pressed(egui::Key::O),
                 i.modifiers.command && i.key_pressed(egui::Key::S),
-                i.modifiers.command && i.key_pressed(egui::Key::N),
-                i.key_pressed(egui::Key::Delete),
             )
         });
         if ctrl_o && self.editor.is_none() && self.confirm.is_none() {
@@ -275,14 +252,6 @@ impl eframe::App for EditorApp {
         }
         if ctrl_s && self.editor.is_none() {
             self.try_save();
-        }
-        if ctrl_n && self.editor.is_none() {
-            self.add_entry();
-        }
-        if del && self.editor.is_none() && self.confirm.is_none() {
-            if let Some(i) = self.selected {
-                self.remove_entry(i);
-            }
         }
 
         egui::TopBottomPanel::top("toolbar").show(ctx, |ui| self.ui_toolbar(ui));
@@ -341,16 +310,6 @@ impl EditorApp {
                 self.pick_save_as_dialog();
             }
             ui.separator();
-            if ui.add(egui::Button::new(T.add)).on_hover_text(T.add_tip).clicked() {
-                self.add_entry();
-            }
-            if ui.add(egui::Button::new(T.remove)).on_hover_text(T.remove_tip).clicked() {
-                if let Some(i) = self.selected {
-                    self.remove_entry(i);
-                } else {
-                    self.set_msg(MsgKind::Warn, T.msg_need_select.to_string());
-                }
-            }
             if ui.add(egui::Button::new(T.backup)).on_hover_text(T.backup_tip).clicked() {
                 self.make_backup();
             }
@@ -564,20 +523,6 @@ impl EditorApp {
         let c = self.confirm.take();
         if let Some(c) = c {
             match c {
-                Confirm::Remove(idx) => {
-                    ui.label(format!("{}", T.confirm_remove.replace(" N ", "?")));
-                    ui.label(&self.file.entries[idx].keys);
-                    ui.add_space(6.0);
-                    ui.horizontal(|ui| {
-                        if ui.button(T.ok).clicked() {
-                            self.do_remove(idx);
-                            close = true;
-                        }
-                        if ui.button(T.cancel).clicked() {
-                            close = true;
-                        }
-                    });
-                }
                 Confirm::SaveWithIssues { issues } => {
                     ui.label(T.msg_validation_issues);
                     egui::ScrollArea::vertical().max_height(120.0).show(ui, |ui| {
@@ -691,4 +636,47 @@ pub fn auto_locate_keymaps(exe_dir: &Path) -> Option<PathBuf> {
         exe_dir.join("wind.keymaps"),
     ];
     candidates.into_iter().find(|p| p.exists())
+}
+
+/// egui 默认字体不含中日韩(CJK)字形，中文会显示为方块。
+/// 运行期从 Windows 系统字体目录加载一款中文字体作为回退（保持单文件、不捆绑字体文件）。
+pub fn install_chinese_fonts(ctx: &egui::Context) {
+    let Some(bytes) = load_system_cjk_font() else {
+        return;
+    };
+    let mut fonts = FontDefinitions::default();
+    fonts
+        .font_data
+        .insert("cjk".to_owned(), FontData::from_owned(bytes).into());
+    // 追加到比例/等宽字体末尾作为回退：拉丁字形仍走默认字体，缺字时落到中文字体。
+    for family in [FontFamily::Proportional, FontFamily::Monospace] {
+        fonts
+            .families
+            .get_mut(&family)
+            .unwrap_or_else(|| unreachable!("default fonts contain both families"))
+            .push("cjk".to_owned());
+    }
+    ctx.set_fonts(fonts);
+}
+
+/// 按优先级加载一款系统中文字体；找不到则返回 None（界面退化为无中文）。
+fn load_system_cjk_font() -> Option<Vec<u8>> {
+    let windir = std::env::var("WINDIR").unwrap_or_else(|_| "C:\\Windows".to_owned());
+    let font_dir = std::path::Path::new(&windir).join("Fonts");
+    // 优先单字面(.ttf，解析更可靠)，其次 TrueType Collection(.ttc)。
+    const CANDIDATES: &[&str] = &[
+        "msyh.ttc", // 微软雅黑
+        "simhei.ttf",
+        "msyhl.ttc",
+        "Deng.ttf",
+        "simsun.ttc",
+        "simkai.ttf",
+    ];
+    for name in CANDIDATES {
+        let p = font_dir.join(name);
+        if let Ok(bytes) = std::fs::read(&p) {
+            return Some(bytes);
+        }
+    }
+    None
 }
