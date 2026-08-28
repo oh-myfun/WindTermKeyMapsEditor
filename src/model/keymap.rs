@@ -254,4 +254,98 @@ mod tests {
         let f = KeymapFile::parse_json(SAMPLE).unwrap();
         assert!(f.validate().is_empty());
     }
+
+    #[test]
+    fn top_level_non_array_errors() {
+        // WindTerm 文件顶层必须是数组；对象/字符串/数字都应报错而非静默通过。
+        assert!(KeymapFile::parse_json("{}").is_err());
+        assert!(KeymapFile::parse_json("\"hello\"").is_err());
+        assert!(KeymapFile::parse_json("123").is_err());
+        assert!(KeymapFile::parse_json("null").is_err());
+    }
+
+    #[test]
+    fn unknown_fields_are_ignored() {
+        // 未来版本的 WindTerm 可能新增字段，解析必须宽容忽略，不影响已知字段保真。
+        let f = KeymapFile::parse_json(
+            r#"[{"keys":"<Ctrl+O>","modes":"normal","action":"File.Open","extra":123,"desc":"x"}]"#,
+        )
+        .unwrap();
+        let e = &f.entries[0];
+        assert_eq!(e.keys, "<Ctrl+O>");
+        assert_eq!(e.action.as_deref(), Some("File.Open"));
+        // 未知字段不随序列化返回
+        let json = f.to_json_string().unwrap();
+        assert!(!json.contains("extra"));
+    }
+
+    #[test]
+    fn target_preview_prefers_action_and_truncates_script() {
+        let mut a = KeymapEntry {
+            keys: "a".into(),
+            modes: "normal".into(),
+            action: Some("Text.Find".into()),
+            script: None,
+        };
+        assert_eq!(a.target_preview(20), "Text.Find");
+        a.action = None;
+        a.script = Some("(c) => { window.open('x'); }".into());
+        assert_eq!(a.target_preview(100), "(c) => { window.open('x'); }");
+        // 超长脚本应截断并以 … 结尾
+        let long = a.target_preview(10);
+        assert_eq!(long.chars().count(), 11);
+        assert!(long.ends_with('…'));
+        // 两者皆空时返回空串
+        a.script = None;
+        assert_eq!(a.target_preview(20), "");
+    }
+
+    #[test]
+    fn kind_identifies_action_script_or_empty() {
+        let mut e = KeymapEntry::default();
+        assert_eq!(e.kind(), "");
+        e.action = Some("A".into());
+        assert_eq!(e.kind(), "action");
+        e.action = None;
+        e.script = Some("B".into());
+        assert_eq!(e.kind(), "script");
+    }
+
+    #[test]
+    fn validate_reports_missing_action_or_script() {
+        let f = KeymapFile::parse_json(r#"[{"keys":"a","modes":"n"}]"#).unwrap();
+        let issues = f.validate();
+        assert!(issues.iter().any(|s| s.contains("缺少 action 或 script")));
+    }
+
+    #[test]
+    fn validate_reports_empty_modes() {
+        // 缺 modes 字段（默认空串）同样应被校验捕获。
+        let f = KeymapFile::parse_json(r#"[{"keys":"a","action":"X"}]"#).unwrap();
+        let issues = f.validate();
+        assert!(issues.iter().any(|s| s.contains("modes 为空")));
+    }
+
+    #[test]
+    fn multiline_script_escapes_survive_roundtrip() {
+        // script 里含 \n、\"、\\ 等 JSON 转义，解析后语义与写回重读一致。
+        let src = r#"[{"keys":"<F2>","modes":"local","script":"(c)=>{ let s=\"a\\\"b\"; \n let t='\\'; }"}]"#;
+        let f = KeymapFile::parse_json(src).unwrap();
+        let s = f.entries[0].script.as_deref().unwrap();
+        assert!(s.contains("\n"));
+        assert!(s.contains("\""));
+        assert!(s.contains("\\"));
+        let json = f.to_json_string().unwrap();
+        let back = KeymapFile::parse_json(&json).unwrap();
+        assert_eq!(back, f);
+    }
+
+    #[test]
+    fn mixed_case_modes_preserved_byte_for_byte() {
+        // 大小写是区分语义的（如 Remote 与 remote），round-trip 不得改动。
+        let f = KeymapFile::parse_json(r#"[{"keys":"<Ctrl+D>","modes":"normal, Remote, Widget","action":"X"}]"#).unwrap();
+        let json = f.to_json_string().unwrap();
+        assert!(json.contains("normal, Remote, Widget"));
+        assert_eq!(KeymapFile::parse_json(&json).unwrap(), f);
+    }
 }

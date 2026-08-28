@@ -16,12 +16,16 @@ name = "windterm_keymaps_editor"
 path = "src/lib.rs"
 
 [dependencies]
-eframe = "0.29.1"
-egui = "0.29.1"
+eframe = "0.33"
+egui = "0.33"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-rfd = "0.15"
-egui-keybind = "0.4.1"
+rfd = "0.17"
+egui-keybind = "0.8.0"
+
+[dev-dependencies]
+# egui 官方成熟 GUI 测试框架（基于 kittest + AccessKit），用于驱动完整 eframe 应用做交互/回归测试。
+egui_kittest = { version = "0.33", features = ["eframe"] }
 
 [profile.release]
 # 减小体积/提升性能

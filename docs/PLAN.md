@@ -18,10 +18,14 @@ WindTerm 的快捷键配置集中在 `global/wind.keymaps`（JSON 数组，531 �
 
 ## 3. 里程碑与任务
 
-### M0 环境就绪（进行中）
+### M0 环境就绪（已完成）
 - 通过 rsproxy 镜像安装 Rust 1.98 工具链（手动解压，规避 rustup 代理硬链接 bug）
 - 配置 gnullvm target + cargo 稀疏索引镜像
 - 验证 `cargo build --release` 可产出单文件 exe
+
+测试框架（已引入）：`egui_kittest 0.33.3`（egui 官方成熟 GUI 测试框架，基于 kittest + AccessKit），
+在 `tests/gui_tests.rs` 中以 Harness 驱动完整 eframe 应用做交互/回归测试（排序、搜索、快捷键编辑弹窗、录制、保存落盘）。
+依赖版本说明：egui-keybind 0.8.0 锁定 egui 0.33，故 egui/eframe/egui_kittest 均取 0.33.3（其为 0.33 系列最新）；rfd 0.17.2、egui-keybind 0.8.0 已是最新。
 
 ### M1 核心数据模型 + 测试（纯逻辑）
 - `model/keymap.rs`：`KeymapEntry { keys, modes, action, script }`，serde 解析/序列化

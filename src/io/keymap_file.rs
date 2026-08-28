@@ -165,4 +165,70 @@ mod tests {
         assert_eq!(read_keymap(&p).unwrap(), f);
         fs::remove_file(&p).ok();
     }
+
+    #[test]
+    fn create_backup_missing_file_errors() {
+        let p = tmp_path("no_such_for_backup.json");
+        fs::remove_file(&p).ok();
+        let r = create_backup(&p);
+        assert!(matches!(r, Err(KeymapError::Io(..))));
+        // 不应残留半成品 .bak
+        assert!(!backup_path(&p).exists());
+    }
+
+    #[test]
+    fn write_keymap_to_missing_dir_errors() {
+        let p = Path::new("Z:/__no_such_dir__/wind.keymaps");
+        let f = KeymapFile::parse_json("[]").unwrap();
+        assert!(matches!(write_keymap(&p, &f), Err(KeymapError::Io(..))));
+    }
+
+    #[test]
+    fn non_utf8_content_errors() {
+        let p = tmp_path("non_utf8.json");
+        fs::write(&p, [0xff, 0xfe, 0x00, 0x5b]).unwrap(); // 非法 UTF-8 字节
+        let r = read_keymap(&p);
+        assert!(matches!(r, Err(KeymapError::Io(..))));
+        fs::remove_file(&p).ok();
+    }
+
+    #[test]
+    fn save_as_overwrites_existing_without_backup() {
+        let p = tmp_path("saveas_overwrite.json");
+        let a = KeymapFile::parse_json(r#"[{"keys":"<Ctrl+A>","modes":"normal","action":"X"}]"#).unwrap();
+        let b = KeymapFile::parse_json(r#"[{"keys":"<Ctrl+B>","modes":"command","action":"Y"}]"#).unwrap();
+        save_as(&p, &a).unwrap();
+        save_as(&p, &b).unwrap();
+        assert_eq!(read_keymap(&p).unwrap(), b);
+        // save_as 不产生备份
+        assert!(!backup_path(&p).exists());
+        fs::remove_file(&p).ok();
+    }
+
+    #[test]
+    fn backup_name_is_dot_bak_suffix() {
+        let p = tmp_path("bak_name.json");
+        fs::write(&p, "[]").unwrap();
+        let bak = create_backup(&p).unwrap();
+        assert_eq!(bak, backup_path(&p));
+        assert_eq!(bak.file_name().unwrap().to_str().unwrap(), "bak_name.json.bak");
+        fs::remove_file(&p).ok();
+        fs::remove_file(&bak).ok();
+    }
+
+    #[test]
+    fn write_then_read_restores_multiline_script() {
+        let p = tmp_path("multiline_script.json");
+        let f = KeymapFile::parse_json(
+            r#"[{"keys":"<Ctrl+Alt+V>","modes":"normal, local","script":"(c)=>{\n  let a = 1;\n  return a;\n}"}]"#,
+        )
+        .unwrap();
+        write_keymap(&p, &f).unwrap();
+        let back = read_keymap(&p).unwrap();
+        assert_eq!(back, f);
+        let s = back.entries[0].script.as_deref().unwrap();
+        assert!(s.contains('\n'));
+        fs::remove_file(&p).ok();
+        fs::remove_file(backup_path(&p)).ok();
+    }
 }
