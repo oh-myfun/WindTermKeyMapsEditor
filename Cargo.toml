@@ -21,6 +21,7 @@ egui = "0.29.1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 rfd = "0.15"
+egui-keybind = "0.4.1"
 
 [profile.release]
 # 减小体积/提升性能

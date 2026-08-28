@@ -922,6 +922,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "egui-keybind"
+version = "0.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "68d862180c4077b9aa75e68241cbc5a1a2d3227b8fdc54b89231fc3764ace401"
+dependencies = [
+ "egui",
+]
+
+[[package]]
 name = "egui-wgpu"
 version = "0.29.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3892,6 +3901,7 @@ version = "0.1.0"
 dependencies = [
  "eframe",
  "egui",
+ "egui-keybind",
  "rfd",
  "serde",
  "serde_json",

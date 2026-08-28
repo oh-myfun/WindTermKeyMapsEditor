@@ -27,6 +27,8 @@ pub enum MsgKind {
 pub struct KeysDraft {
     pub index: usize,
     pub keys: String,
+    /// 录制组件的状态：点击录制后由它捕获组合键。
+    pub recorded: egui_keybind::Shortcut,
 }
 
 /// 可排序的列。
@@ -149,6 +151,7 @@ impl EditorApp {
         self.keys_edit = Some(KeysDraft {
             index,
             keys: e.keys,
+            recorded: egui_keybind::Shortcut::default(),
         });
     }
 
@@ -204,17 +207,18 @@ impl eframe::App for EditorApp {
         egui::TopBottomPanel::bottom("statusbar").show(ctx, |ui| self.ui_statusbar(ui));
 
         // 设置快捷键对话框
-        if let Some(draft) = self.keys_edit.clone() {
+        // 对 draft 采用「取出→渲染→写回」方式：TextEdit/Keybind 直接改 d.*，帧末写回
+        // self.keys_edit，编辑内容才能跨帧保留。若用 clone 每次重建初始值，用户输入会立即被覆盖。
+        if let Some(mut d) = self.keys_edit.take() {
             let mut keep = true;
             egui::Window::new(T.ed_keys_title)
                 .id(egui::Id::new("keys_win"))
                 .collapsible(false)
                 .resizable(false)
                 .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
-                .show(ctx, |ui| self.ui_keys_edit(ui, draft, &mut keep));
-            if !keep {
-                // 弹窗内的确定/取消已决定关闭此弹窗。
-                self.keys_edit = None;
+                .show(ctx, |ui| self.ui_keys_edit(ui, &mut d, &mut keep));
+            if keep {
+                self.keys_edit = Some(d);
             }
         }
 
@@ -430,27 +434,34 @@ impl EditorApp {
         }
     }
 
-    fn ui_keys_edit(&mut self, ui: &mut egui::Ui, mut d: KeysDraft, keep: &mut bool) {
+    fn ui_keys_edit(&mut self, ui: &mut egui::Ui, d: &mut KeysDraft, keep: &mut bool) {
         ui.add_space(4.0);
         ui.label(T.ed_keys);
-        let input = ui.add(
-            egui::TextEdit::singleline(&mut d.keys)
-                .hint_text(T.ed_keys_placeholder)
-                .desired_width(360.0),
-        );
-        // 实键录入：窗口有焦点但输入框未聚焦时，直接按键即可写入快捷键，且不被应用/系统快捷键劫持。
-        if !input.has_focus() {
-            if let Some(combo) = capture_key_combo(ui.ctx()) {
-                d.keys = combo;
+        // ① 自由文本编辑：兼容 <Ctrl+...>、vim 正则、裸字符。
+        // 不做全局按键嗅探，避免把输入框内正常打字误当作快捷键覆盖；组合键录入走下方「录制」器件。
+        ui.horizontal(|ui| {
+            ui.add(
+                egui::TextEdit::singleline(&mut d.keys)
+                    .hint_text(T.ed_keys_placeholder)
+                    .desired_width(320.0),
+            );
+            // ② 成熟录制组件（egui-keybind）：点击后进入录制态，按下某组合键即写入 d.keys。
+            let rec = ui
+                .add(egui_keybind::Keybind::new(&mut d.recorded, "keys_rec").with_text(T.ed_keys_record))
+                .on_hover_text(T.ed_keys_record_tip);
+            if rec.changed() {
+                if let Some(ks) = d.recorded.keyboard() {
+                    d.keys = windterm_format(ks);
+                }
             }
-        }
+        });
         ui.add_space(8.0);
         ui.horizontal(|ui| {
             if ui
                 .button(RichText::new(T.ok).strong().color(Color32::from_rgb(120, 220, 160)))
                 .clicked()
             {
-                self.apply_keys_edit(&d);
+                self.apply_keys_edit(d);
                 *keep = false;
             }
             if ui.button(T.cancel).clicked() {
@@ -655,27 +666,12 @@ pub fn run_edittest(path: &Path) -> (Vec<String>, i32) {
     (log, 0)
 }
 
-/// 从本帧输入事件里抓取一次“按键按下”，用于把真实按键写入快捷键。
-/// 返回形如 `<Ctrl+Shift+X>`；无修饰键的字母/数字返回裸字符；功能键返回 `<F11>` 等。
-/// 组合与 egui/WindTerm 的 `<修饰+键>` 约定对齐。
-fn capture_key_combo(ctx: &egui::Context) -> Option<String> {
-    let events = ctx.input(|i| i.events.clone());
-    for ev in &events {
-        if let egui::Event::Key {
-            key,
-            pressed: true,
-            repeat: false,
-            modifiers,
-            ..
-        } = ev
-        {
-            return combo_string(*key, modifiers);
-        }
-    }
-    None
+/// 把 egui 录制得到的 KeyboardShortcut 转成 WindTerm 风格快捷键字符串。
+fn windterm_format(ks: egui::KeyboardShortcut) -> String {
+    combo_string(ks.logical_key, &ks.modifiers).unwrap_or_default()
 }
 
-/// 由“键 + 修饰键”拼出 WindTerm 风格快捷键：`<Ctrl+Shift+X>`、裸字符 `A`、功能键 `<F11>`。
+/// 由“键 + 修饰键”拼出 WindTerm 风格快捷键：`<Ctrl+Shift+X>`、裸字符 `a`、功能键 `<F11>`。
 fn combo_string(key: egui::Key, modifiers: &egui::Modifiers) -> Option<String> {
     let name = key_to_name(key);
     let mut parts: Vec<&str> = Vec::new();
@@ -692,7 +688,8 @@ fn combo_string(key: egui::Key, modifiers: &egui::Modifiers) -> Option<String> {
         if is_named_key(key) {
             format!("<{name}>")
         } else {
-            name
+            // 裸字母统一小写，与 WindTerm 的裸字符约定一致（如 i、j）
+            name.to_lowercase()
         }
     } else {
         parts.push(&name);
@@ -832,8 +829,9 @@ mod tests {
 
     #[test]
     fn combo_bare_keys() {
-        // 无修饰键：字母/数字返回裸字符，功能/方向/空格等加尖括号。
-        assert_eq!(combo_string(egui::Key::A, &mods(false, false, false)), Some("A".into()));
+        // 无修饰键：字母返回小写裸字符，数字返回裸字符，功能/方向/空格等加尖括号。
+        assert_eq!(combo_string(egui::Key::A, &mods(false, false, false)), Some("a".into()));
+        assert_eq!(combo_string(egui::Key::I, &mods(false, false, false)), Some("i".into()));
         assert_eq!(combo_string(egui::Key::Num5, &mods(false, false, false)), Some("5".into()));
         assert_eq!(combo_string(egui::Key::F11, &mods(false, false, false)), Some("<F11>".into()));
         assert_eq!(
@@ -844,6 +842,33 @@ mod tests {
             combo_string(egui::Key::Space, &mods(false, false, false)),
             Some("<Space>".into())
         );
+    }
+
+    #[test]
+    fn windterm_format_maps_recorder_shortcut() {
+        use egui::Key;
+        let ks = egui::KeyboardShortcut::new(
+            egui::Modifiers {
+                ctrl: true,
+                alt: false,
+                shift: true,
+                mac_cmd: false,
+                command: false,
+            },
+            Key::P,
+        );
+        assert_eq!(windterm_format(ks), "<Ctrl+Shift+P>");
+        let bare = egui::KeyboardShortcut::new(
+            egui::Modifiers {
+                ctrl: false,
+                alt: false,
+                shift: false,
+                mac_cmd: false,
+                command: false,
+            },
+            Key::J,
+        );
+        assert_eq!(windterm_format(bare), "j");
     }
 
     #[test]
