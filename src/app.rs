@@ -44,7 +44,7 @@ struct SortState {
     asc: bool,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Confirm {
     SaveWithIssues { issues: Vec<String> },
     UnsavedClose,
@@ -454,59 +454,58 @@ impl EditorApp {
     }
 
     fn ui_confirm(&mut self, ui: &mut egui::Ui) -> bool {
+        // 用克隆渲染并只留下「用户点按钮决定的关闭」，否则确认框仅闪现一帧即消失。
+        let Some(c) = self.confirm.clone() else {
+            return false;
+        };
         let mut close = false;
-        let c = self.confirm.take();
-        if let Some(c) = c {
-            match c {
-                Confirm::SaveWithIssues { issues } => {
-                    ui.label(T.msg_validation_issues);
-                    egui::ScrollArea::vertical().max_height(120.0).show(ui, |ui| {
-                        for it in &issues {
-                            ui.label(
-                                RichText::new(format!(" • {it}")).color(Color32::from_rgb(240, 170, 90)),
-                            );
-                        }
-                    });
-                    ui.add_space(6.0);
-                    ui.label(T.msg_confirm_save_with_issues);
-                    ui.horizontal(|ui| {
-                        if ui.button(T.ok).clicked() {
-                            if self.try_save() {
-                                close = true;
-                            }
-                        }
-                        if ui.button(T.cancel).clicked() {
-                            close = true;
-                        }
-                    });
-                }
-                Confirm::UnsavedClose => {
-                    ui.label(T.msg_unsaved_changes);
-                    ui.label(T.msg_unsaved_changes_detail);
-                    ui.horizontal(|ui| {
-                        if ui.button(T.btn_discard).clicked() {
-                            self.dirty = false;
-                            ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
-                            close = true;
-                        }
-                        if ui.button(T.btn_keep).clicked() {
-                            close = true;
-                        }
-                    });
-                }
-                Confirm::OpenReplace { path } => {
-                    ui.label(T.msg_open_replace);
-                    ui.label(RichText::new(path.display().to_string()).weak());
-                    ui.horizontal(|ui| {
-                        if ui.button(T.btn_discard).clicked() {
-                            self.open_path(&path);
-                            close = true;
-                        }
-                        if ui.button(T.btn_keep).clicked() {
-                            close = true;
-                        }
-                    });
-                }
+        match c {
+            Confirm::SaveWithIssues { issues } => {
+                ui.label(T.msg_validation_issues);
+                egui::ScrollArea::vertical().max_height(120.0).show(ui, |ui| {
+                    for it in &issues {
+                        ui.label(RichText::new(format!(" • {it}")).color(Color32::from_rgb(240, 170, 90)));
+                    }
+                });
+                ui.add_space(6.0);
+                ui.label(T.msg_confirm_save_with_issues);
+                ui.horizontal(|ui| {
+                    if ui.button(T.ok).clicked() {
+                        // 强制带校验问题保存；失败信息由 try_save 显示在状态栏。
+                        close = true;
+                        self.try_save();
+                    }
+                    if ui.button(T.cancel).clicked() {
+                        close = true;
+                    }
+                });
+            }
+            Confirm::UnsavedClose => {
+                ui.label(T.msg_unsaved_changes);
+                ui.label(T.msg_unsaved_changes_detail);
+                ui.horizontal(|ui| {
+                    if ui.button(T.btn_discard).clicked() {
+                        self.dirty = false;
+                        ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
+                        close = true;
+                    }
+                    if ui.button(T.btn_keep).clicked() {
+                        close = true;
+                    }
+                });
+            }
+            Confirm::OpenReplace { path } => {
+                ui.label(T.msg_open_replace);
+                ui.label(RichText::new(path.display().to_string()).weak());
+                ui.horizontal(|ui| {
+                    if ui.button(T.btn_discard).clicked() {
+                        self.open_path(&path);
+                        close = true;
+                    }
+                    if ui.button(T.btn_keep).clicked() {
+                        close = true;
+                    }
+                });
             }
         }
         close
