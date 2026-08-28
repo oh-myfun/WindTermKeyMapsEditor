@@ -1,0 +1,111 @@
+{
+  "AppDir"          : {
+    "detail"        : "&WindTerm Dir",
+    "value"         : "() => { return window.applicationDir() }"
+  },
+  "BufferText"      : {
+    "detail"        : "&Buffer Text",
+    "value"         : "() => { var view = window.activeView(); return view ? view.subString(0) : '' }"
+  },
+  "CaretColumn"     : {
+    "detail"        : "Caret &Column Number",
+    "value"         : "() => { return window.activeView().caretColumn }"
+  },
+  "CaretLine"       : {
+    "detail"        : "Caret &Line Number",
+    "value"         : "() => { return window.activeView().caretLine }"
+  },
+  "CaretLineOffset" : {
+    "detail"        : "Caret Line &Offset",
+    "value"         : "() => { return window.activeView().caretLineOffset }"
+  },
+  "CurrentChar"     : {
+    "detail"        : "Current &Char",
+    "value"         : "() => {
+      var view = window.activeView(), code = view ? view.charCodeAt(view.selectionCaretP()).toString(16) : -1;
+      return view ? 'U+' + '0000'.substring(0, 4 - code.length) + code.toUpperCase() : '';
+    }"
+  },
+  "CurrentLineText" : {
+    "detail"        : "Current &Line Text",
+    "value"         : "() => {
+      var view = window.activeView(), line = view ? view.lineFromPosition(view.selectionCaretP()) : -1;
+      return view ? view.subString(view.lineStart(line), view.lineEnd(line)) : '';
+    }"
+  },
+  "CurrentWordText" : {
+    "detail"        : "Current &Word Text",
+    "value"         : "() => {
+      var view = window.activeView(), caret = view ? view.selectionCaretP() : -1;
+      return view ? view.subString(view.wordStart(caret), view.wordEnd(caret)) : '';
+    }"
+  },
+  "Date"            : {
+    "detail"        : "Locale &Date",
+    "value"         : "() => { var date = new Date(); return date.toLocaleDateString() }"
+  },
+  "DateTime"        : {
+    "detail"        : "&Locale Date And Time",
+    "value"         : "() => { var date = new Date(); return date.toLocaleString() }"
+  },
+  "FileDir"         : {
+    "detail"        : "&File Dir",
+    "value"         : "() => {
+      var url = window.activeView().url();
+      for (var separator = url.length - 1; separator >= 0; separator--) {
+        var code = url.charCodeAt(separator);
+        if (code == 47 || code == 92) { separator++; break; }
+      }
+      return url.substring(0, separator);
+    }"
+  },
+  "FileExt"         : {
+    "detail"        : "File &Extension",
+    "value"         : "() => {
+      var url = window.activeView().url(), dot = url.lastIndexOf('.'); 
+      for (var separator = url.length - 1; separator >= 0; separator--) {
+        var code = url.charCodeAt(separator);
+        if (code == 47 || code == 92 || code == 58) break;
+      }      
+      return url.substring((dot > separator) ? dot + 1 : url.length);
+    }"
+  },
+  "FileName"        : {
+    "detail"        : "File &Name",
+    "value"         : "() => {
+      var url = window.activeView().url();
+      for (var separator = url.length - 1; separator >= 0; separator--) {
+        var code = url.charCodeAt(separator);
+        if (code == 47 || code == 92 || code == 58) { separator++; break; }
+      }
+      return url.substring(separator);
+    }"
+  },
+  "FileNameNoExt"   : {
+    "detail"        : "File &Name Without Extension",
+    "value"         : "() => {
+      var url = window.activeView().url(), dot = url.lastIndexOf('.');
+      for (var separator = url.length - 1; separator >= 0; separator--) {
+        var code = url.charCodeAt(separator);
+        if (code == 47 || code == 92 || code == 58) { separator++; break; }
+      }
+      return url.substring(separator, (dot > separator) ? dot : url.length);
+    }"
+  },
+  "FilePath"        : {
+    "detail"        : "File &Path",
+    "value"         : "() => { return window.activeView().url() }"
+  },
+  "Scheme"          : {
+    "detail"        : "Current Scheme",
+    "value"         : "() => { return window.activeView().scheme() }"
+  },
+  "Selection"       : {
+    "detail"        : "&Selected Text",
+    "value"         : "() => { var view = window.activeView(); return view ? view.subString(view.selectionStartP(), view.selectionEndP()) : '' }"
+  },
+  "Time"            : {
+    "detail"        : "Locale &Time",
+    "value"         : "() => { var date = new Date(); return date.toLocaleTimeString() }"
+  }
+}

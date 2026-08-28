@@ -1,0 +1,31 @@
+[package]
+name = "windterm-keymaps-editor"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.74"
+description = "WindTerm 快捷键配置文件（wind.keymaps）可视化编辑器 —— 轻量、简洁、美观、高效"
+license = "MIT"
+authors = ["WindTermKeyMapsEditor Contributors"]
+
+[[bin]]
+name = "WindTermKeyMapsEditor"
+path = "src/main.rs"
+
+[lib]
+name = "windterm_keymaps_editor"
+path = "src/lib.rs"
+
+[dependencies]
+eframe = "0.29.1"
+egui = "0.29.1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+rfd = "0.15"
+
+[profile.release]
+# 减小体积/提升性能
+opt-level = "z"
+lto = "thin"
+codegen-units = 1
+strip = true
+panic = "abort"

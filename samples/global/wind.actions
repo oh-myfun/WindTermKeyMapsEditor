@@ -1,0 +1,2700 @@
+{
+  "Application.Exit" : {
+    "text"      : "E&xit",
+    "script"    : "() => { application.exit() }"
+  },
+  "Application.NewWindow" : {
+    "text"      : "New &Window",
+    "script"    : "() => { application.openWindow() }"
+  },
+  "Application.OpenProfileDialog" : {
+    "text"      : "&Profiles Directory...",
+    "script"    : "(action) => { application.openProfileDialog() }"
+  },
+  "Application.SetWindowOpaque" : {
+    "text"      : "&Opaque",
+    "script"    : "(action) => { application.setWindowOpacity(1.0) }"
+  },
+  "Application.SetWindowOpacity" : {
+    "text"      : "Custom &Opacity...",
+    "script"    : "(action) => { application.setWindowOpacity() }"
+  },
+  "Application.SetWindowTranslucent" : {
+    "text"      : "&Translucent",
+    "script"    : "(action) => { application.setWindowOpacity(0.5) }"
+  },
+  "Application.SetWindowTransparent" : {
+    "text"      : "&Transparent",
+    "script"    : "(action) => { application.setWindowOpacity(0.1) }"
+  },
+  "Application.ThemeList" : {
+    "text"      : "() => { let themes = application.themes(); return themes.length ? themes : qsTr('[Theme list is empty]') }",
+    "state"     : "(action) => { action.checked = action.checkable = (application.theme() == action.text) }",
+    "script"    : "(action) => { application.setTheme(action.text) }"
+  },
+  "Dock.TogglePaneExplorer" : {
+    "text"      : "&Explorer",
+    "icon"      : "king::explorerPane",
+    "state"     : "(action) => { action.checked = action.checkable = (window.activeDock.indexOf('ExplorerPane') != -1) }",
+    "script"    : "() => { window.activeDock.togglePane('ExplorerPane') }"
+  },
+  "Dock.TogglePaneFiler" : {
+    "text"      : "&Filer",
+    "icon"      : "king::filerPane",
+    "state"     : "(action) => { action.checked = action.checkable = (window.activeDock.indexOf('FilerPane') != -1) }",
+    "script"    : "() => { window.activeDock.togglePane('FilerPane') }"
+  },
+  "Dock.TogglePaneOutline" : {
+    "text"      : "&Outline",
+    "icon"      : "king::outlinePane",
+    "state"     : "(action) => { action.checked = action.checkable = (window.activeDock.indexOf('OutlinePane') != -1) }",
+    "script"    : "() => { window.activeDock.togglePane('OutlinePane') }"
+  },
+  "Dock.TogglePaneOutput" : {
+    "text"      : "&Output",
+    "icon"      : "king::outputPane",
+    "state"     : "(action) => { action.checked = action.checkable = (window.activeDock.indexOf('OutputPane') != -1) }",
+    "script"    : "() => { window.activeDock.togglePane('OutputPane') }"
+  },
+  "Dock.TogglePaneProject" : {
+    "text"      : "&Project",
+    "icon"      : "king::projectPane",
+    "state"     : "(action) => { action.checked = action.checkable = (window.activeDock.indexOf('ProjectPane') != -1) }",
+    "script"    : "() => { window.activeDock.togglePane('ProjectPane') }"
+  },
+  "Dock.TogglePaneSender" : {
+    "text"      : "&Sender",
+    "icon"      : "king::senderPane",
+    "state"     : "(action) => { action.checked = action.checkable = (window.activeDock.indexOf('SenderPane') != -1) }",
+    "script"    : "() => { window.activeDock.togglePane('SenderPane') }"
+  },
+  "Dock.TogglePaneSession" : {
+    "text"      : "&Session",
+    "icon"      : "king::sessionPane",
+    "state"     : "(action) => { action.checked = action.checkable = (window.activeDock.indexOf('SessionPane') != -1) }",
+    "script"    : "() => { window.activeDock.togglePane('SessionPane') }"
+  },
+  "Dock.TogglePaneShell" : {
+    "text"      : "&Shell",
+    "icon"      : "king::shellPane",
+    "state"     : "(action) => { action.checked = action.checkable = (window.activeDock.indexOf('ShellPane') != -1) }",
+    "script"    : "() => { window.activeDock.togglePane('ShellPane') }"
+  },
+  "Dock.TogglePaneTransfer" : {
+    "text"      : "&Transfer",
+    "icon"      : "king::transferPane",
+    "state"     : "(action) => { action.checked = action.checkable = (window.activeDock.indexOf('TransferPane') != -1) }",
+    "script"    : "() => { window.activeDock.togglePane('TransferPane') }"
+  },
+  "Editor.CopyFileName" : {
+    "text"      : "Copy File &Name"
+  },
+  "Editor.CopyFilePath" : {
+    "text"      : "Copy File &Path"
+  },
+  "Editor.InsertFile" : {
+    "text"      : "&Insert File...",
+    "script"    : "() => { editor.insertFileDialog() }"
+  },
+  "Editor.InsertFileName" : {
+    "text"      : "File &Name"
+  },
+  "Editor.InsertFilePath" : {
+    "text"      : "File &Path"
+  },
+  "Editor.InsertLongTime" : {
+    "text"      : "&Long Time/Date"
+  },
+  "Editor.InsertShortTime" : {
+    "text"      : "&Short Time/Date"
+  },
+  "Editor.LoadEncodingList" : {
+    "text"      : "() => { return window.encodings(true, true) }",
+    "state"     : "(action) => { let re = new RegExp(editor.activeView().encoding() + '(?!-)', 'i'); action.checked = action.checkable = re.test(action.text); }",
+    "script"    : "(action) => { editor.activeView().reload(action.text) }"
+  },
+  "Editor.NewFile" : {
+    "text"      : "&New File",
+    "icon"      : "king::new",
+    "kits"      : ["Browser", "Commander", "Editor", "Terminal"],
+    "script"    : "() => { editor.open() }"
+  },
+  "Editor.OpenFile" : {
+    "text"      : "&Open File...",
+    "icon"      : "king::open",
+    "kits"      : ["Browser", "Commander", "Editor", "Terminal"],
+    "script"    : "() => { editor.openFileDialog() }"
+  },
+  "Editor.OpenSelection" : {
+    "text"      : "Open S&election"
+  },
+  "Editor.RedoList" : {
+    "text"      : "() => { let redoList = editor.activeView().redoList(); return redoList != null ?  redoList : qsTr('[Redo list is empty]') }"
+  },
+  "Editor.Save" : {
+    "text"      : "&Save",
+    "icon"      : "king::save",
+    "state"     : "(action) => { let view = editor.activeView(); action.enabled = view ? view.isLoaded() : false }",
+    "script"    : "() => { editor.activeView().save() }"
+  },
+  "Editor.SaveAll" : {
+    "text"      : "Save &All",
+    "icon"      : "king::saveAll",
+    "state"     : "(action) => { action.enabled = (editor.activeView() != null) }",
+    "script"    : "() => { editor.saveAll() }"
+  },
+  "Editor.SaveAs" : {
+    "text"      : "Save &As...",
+    "state"     : "(action) => { let view = editor.activeView(); action.enabled = view ? view.isLoaded() : false }",
+    "script"    : "() => { editor.activeView().saveAs() }"
+  },
+  "Editor.SaveCopyAs" : {
+    "text"      : "Save &Copy As...",
+    "state"     : "(action) => { let view = editor.activeView(); action.enabled = view ? view.isLoaded() : false }",
+    "script"    : "() => { editor.activeView().saveCopyAs() }"
+  },
+  "Editor.SaveSelectionAs" : {
+    "text"      : "Save Se&lection As...",
+    "script"    : "() => { editor.activeView().saveSelectionAs() }"
+  },
+  "Editor.SchemeList" : {
+    "text"      : "() => { let schemeNames = editor.schemeNames(); return schemeNames.length ? schemeNames : qsTr('[Scheme list is empty]') }",
+    "state"     : "(action) => { action.checked = action.checkable = (editor.activeView().scheme() == action.text) }",
+    "script"    : "(action) => { editor.activeView().setScheme(action.text) }"
+  },
+  "Editor.Stash" : {
+    "text"      : "&Stash",
+    "icon"      : "king::stash"
+  },
+  "Editor.UndoList" : {
+    "text"      : "() => { let undoList = editor.activeView().undoList(); return undoList != null ?  undoList : qsTr('[Undo list is empty]') }"
+  },
+  "FilerPane.AutoSyncTerminalFolder" : {
+    "text"      : "&Auto Sync Terminal Folder",
+    "icon"      : "king::autoSyncTerminalFolder",
+    "state"     : "(action) => { let filer = window.activeKit.pane('FilerPane'); action.checked = action.checkable = filer.syncTerminalFolderMode }",
+    "script"    : "() => { let filer = window.activeKit.pane('FilerPane'); filer.syncTerminalFolderMode = !filer.syncTerminalFolderMode }"
+  },
+  "FilerPane.Cdup" : {
+    "text"      : "&Cdup",
+    "icon"      : "king::up",
+    "script"    : "() => { let filer = window.activeKit.pane('FilerPane'); filer.cdUp() }"
+  },
+  "FilerPane.CopyDirectoryName" : {
+    "text"      : "Copy &Directory Name",
+    "icon"      : "king::copy",
+    "state"     : "(action) => { let filer = window.activeKit.pane('FilerPane'); }",
+    "script"    : "() => { let filer = window.activeKit.pane('FilerPane'); filer.copyDirectoryName() }"
+  },
+  "FilerPane.CopyDirectoryPath" : {
+    "text"      : "Copy &Directory Path",
+    "icon"      : "king::copy",
+    "state"     : "(action) => { let filer = window.activeKit.pane('FilerPane'); }",
+    "script"    : "() => { let filer = window.activeKit.pane('FilerPane'); filer.copyDirectoryPath() }"
+  },
+  "FilerPane.CopyDirectoryNameToTerminal" : {
+    "text"      : "Copy &Directory Name To Terminal",
+    "icon"      : "king::paste",
+    "state"     : "(action) => { let filer = window.activeKit.pane('FilerPane'); }",
+    "script"    : "() => { let filer = window.activeKit.pane('FilerPane'); filer.copyDirectoryNameToTerminal() }"
+  },
+  "FilerPane.CopyDirectoryPathToTerminal" : {
+    "text"      : "Copy &Directory Path To Terminal",
+    "icon"      : "king::paste",
+    "state"     : "(action) => { let filer = window.activeKit.pane('FilerPane'); }",
+    "script"    : "() => { let filer = window.activeKit.pane('FilerPane'); filer.copyDirectoryPathToTerminal() }"
+  },
+  "FilerPane.CopySelectedNames" : {
+    "text"      : "&Copy Names",
+    "icon"      : "king::copy",
+    "state"     : "(action) => { let filer = window.activeKit.pane('FilerPane'); action.visible = filer.hasSelection() }",
+    "script"    : "() => { let filer = window.activeKit.pane('FilerPane'); filer.copySelectedNames() }"
+  },
+  "FilerPane.CopySelectedNamesToTerminal" : {
+    "text"      : "&Copy Names To Terminal",
+    "icon"      : "king::paste",
+    "state"     : "(action) => { let filer = window.activeKit.pane('FilerPane'); action.visible = filer.hasSelection() }",
+    "script"    : "() => { let filer = window.activeKit.pane('FilerPane'); filer.copySelectedNamesToTerminal() }"
+  },
+  "FilerPane.CopySelectedPaths" : {
+    "text"      : "&Copy Paths",
+    "icon"      : "king::copy",
+    "state"     : "(action) => { let filer = window.activeKit.pane('FilerPane'); action.visible = filer.hasSelection() }",
+    "script"    : "() => { let filer = window.activeKit.pane('FilerPane'); filer.copySelectedPaths() }"
+  },
+  "FilerPane.CopySelectedPathsToTerminal" : {
+    "text"      : "&Copy Paths To Terminal",
+    "icon"      : "king::paste",
+    "state"     : "(action) => { let filer = window.activeKit.pane('FilerPane'); action.visible = filer.hasSelection() }",
+    "script"    : "() => { let filer = window.activeKit.pane('FilerPane'); filer.copySelectedPathsToTerminal() }"
+  },
+  "FilerPane.CopyFrom" : {
+    "text"      : "Copy &From...",
+    "icon"      : "king::upload",
+    "state"     : "(action) => { let filer = window.activeKit.pane('FilerPane'); action.visible = filer.localSystemMode }",
+    "script"    : "() => { let filer = window.activeKit.pane('FilerPane'); filer.upload() }"
+  },  
+  "FilerPane.CopyTo" : {
+    "text"      : "&Copy To...",
+    "icon"      : "king::download",
+    "state"     : "(action) => { let filer = window.activeKit.pane('FilerPane'); action.visible = filer.localSystemMode; action.enabled = filer.hasSelection() }",
+    "script"    : "() => { let filer = window.activeKit.pane('FilerPane'); filer.download() }"
+  },
+  "FilerPane.Download" : {
+    "text"      : "&Download...",
+    "icon"      : "king::download",
+    "state"     : "(action) => { let filer = window.activeKit.pane('FilerPane'); action.visible = !filer.localSystemMode; action.enabled = filer.hasSelection() }",
+    "script"    : "() => { let filer = window.activeKit.pane('FilerPane'); filer.download() }"
+  },
+  "FilerPane.GoBackward" : {
+    "text"      : "Go &Backward",
+    "icon"      : "king::left",
+    "state"     : "(action) => { let filer = window.activeKit.pane('FilerPane'); action.enabled = filer.canGoBackward() }",
+    "script"    : "() => { let filer = window.activeKit.pane('FilerPane'); filer.goBackward() }"
+  },
+  "FilerPane.GoForward" : {
+    "text"      : "Go &Forward",
+    "icon"      : "king::right",
+    "state"     : "(action) => { let filer = window.activeKit.pane('FilerPane'); action.enabled = filer.canGoForward() }",
+    "script"    : "() => { let filer = window.activeKit.pane('FilerPane'); filer.goForward() }"
+  },
+  "FilerPane.GotoAddressBar" : {
+    "text"      : "Goto &Address Bar",
+    "script"    : "() => { let filer = window.activeKit.pane('FilerPane'); filer.gotoAddressBar() }"
+  },
+  "FilerPane.MakeDirectory" : {
+    "text"      : "New &Directory...",
+    "icon"      : "king::add",
+    "state"     : "(action) => { let filer = window.activeKit.pane('FilerPane'); action.visible = !filer.hasSelection() }",
+    "script"    : "() => { let filer = window.activeKit.pane('FilerPane'); filer.mkDir() }"
+  },
+  "FilerPane.MakeFile" : {
+    "text"      : "New &File...",
+    "icon"      : "king::add",
+    "state"     : "(action) => { let filer = window.activeKit.pane('FilerPane'); action.visible = !filer.hasSelection() }",
+    "script"    : "() => { let filer = window.activeKit.pane('FilerPane'); filer.mkFile() }"
+  },
+  "FilerPane.MakeLink" : {
+    "text"      : "New &Link...",
+    "icon"      : "king::add",
+    "state"     : "(action) => { let filer = window.activeKit.pane('FilerPane'); action.visible = !filer.hasSelection() }",
+    "script"    : "() => { let filer = window.activeKit.pane('FilerPane'); filer.mkLink() }"
+  },
+  "FilerPane.More" : {
+    "text"      : "&More",
+    "icon"      : "king::more"
+  },
+  "FilerPane.MoveTo" : {
+    "text"      : "&Move To...",
+    "icon"      : "king::moveTo",
+    "state"     : "(action) => { let filer = window.activeKit.pane('FilerPane'); action.enabled = filer.hasSelection() }",
+    "script"    : "() => { let filer = window.activeKit.pane('FilerPane'); filer.moveTo() }"
+  },  
+  "FilerPane.NewDirectory" : {
+    "text"      : "New &Directory...",
+    "icon"      : "king::add",
+    "script"    : "() => { let filer = window.activeKit.pane('FilerPane'); filer.mkDir() }"
+  },
+  "FilerPane.NewFile" : {
+    "text"      : "New &File...",
+    "icon"      : "king::add",
+    "script"    : "() => { let filer = window.activeKit.pane('FilerPane'); filer.mkFile() }"
+  },
+  "FilerPane.NewLink" : {
+    "text"      : "New &Link...",
+    "icon"      : "king::add",
+    "script"    : "() => { let filer = window.activeKit.pane('FilerPane'); filer.mkLink() }"
+  },
+  "FilerPane.Open" : {
+    "text"      : "&Open",
+    "state"     : "(action) => { let filer = window.activeKit.pane('FilerPane'); action.visible = filer.hasSelection() }",
+    "script"    : "() => { let filer = window.activeKit.pane('FilerPane'); filer.open() }"
+  },
+  "FilerPane.OpenWithDefaultEditor" : {
+    "text"      : "Open With Default &Editor",
+    "state"     : "(action) => { let filer = window.activeKit.pane('FilerPane'); action.visible = filer.hasSelection() }",
+    "script"    : "() => { let filer = window.activeKit.pane('FilerPane'); filer.openWithDefaultEditor() }"
+  },
+  "FilerPane.Property" : {
+    "text"      : "&Property...",
+    "script"    : "() => { let filer = window.activeKit.pane('FilerPane'); filer.property() }"
+  },
+  "FilerPane.RecentPaths" : {
+    "text"      : "() => { let filer = window.activeKit.pane('FilerPane'); let paths = filer ? filer.recentPaths() : []; return paths.length ? paths : qsTr('[Empty]') }",
+    "state"     : "(action) => { let filer = window.activeKit.pane('FilerPane'); action.checked = action.checkable = (filer.rootPath() == action.text) }",
+    "script"    : "(action) => { let filer = window.activeKit.pane('FilerPane'); filer.cd(action.text, false) }"
+  },
+  "FilerPane.Remove" : {
+    "text"      : "&Remove",
+    "icon"      : "king::remove",
+    "state"     : "(action) => { let filer = window.activeKit.pane('FilerPane'); action.enabled = filer.hasSelection() }",
+    "script"    : "() => { let filer = window.activeKit.pane('FilerPane'); filer.remove() }"
+  },
+  "FilerPane.Refresh" : {
+    "text"      : "Re&fresh",
+    "icon"      : "king::refresh",
+    "script"    : "() => { let filer = window.activeKit.pane('FilerPane'); filer.refresh() }"
+  },
+  "FilerPane.Rename" : {
+    "text"      : "Re&name...",
+    "icon"      : "king::rename",
+    "state"     : "(action) => { let filer = window.activeKit.pane('FilerPane'); action.enabled = filer.hasSelection() }",
+    "script"    : "() => { let filer = window.activeKit.pane('FilerPane'); filer.rename() }"
+  },
+  "FilerPane.SetDefaultEditor" : {
+    "text"      : "&Set Default Editor...",
+    "script"    : "() => { let filer = window.activeKit.pane('FilerPane'); filer.openDefaultEditorDialog() }"
+  },
+  "FilerPane.SyncTerminalFolder" : {
+    "text"      : "&Sync Terminal Folder",
+    "icon"      : "king::syncTerminalFolder",
+    "script"    : "() => { let filer = window.activeKit.pane('FilerPane'); filer.syncTerminalFolder(); }"
+  },
+  "FilerPane.ToggleHiddenItems" : {
+    "text"      : "Show &Hidden Items",
+    "state"     : "(action) => { action.checkable = true; action.checked = window.option('filer.hiddenItemsVisible') }",
+    "script"    : "(action) => { window.toggleOption('filer.hiddenItemsVisible') }"
+  },
+  "FilerPane.Upload" : {
+    "text"      : "&Upload To Current Folder...",
+    "icon"      : "king::upload",
+    "state"     : "(action) => { let filer = window.activeKit.pane('FilerPane'); action.visible = !filer.localSystemMode }",
+    "script"    : "() => { let filer = window.activeKit.pane('FilerPane'); filer.upload() }"
+  },  
+  "Help.About"  : {
+    "text"      : "&About WindTerm 2.7.0..."
+  },
+  "Help.Help"   : {
+    "text"      : "&Help"
+  },
+  "Mux.MovePaneToNewWindow" : {
+    "text"      : "&Move Pane To New Window",
+    "state"     : "(action) => { action.enabled = window.activeMuxPaneGroup != null }",
+    "script"    : "(action) => { window.activeMuxPaneGroup.breakMuxPane() }"
+  },
+  "Mux.KillPane" : {
+    "text"      : "() => {
+      let muxPaneNames = window.activeMuxDesktop ? window.activeMuxDesktop.muxPaneNames : [];
+      return muxPaneNames.length ? muxPaneNames : qsTr('[Pane list is empty]');
+    }",
+    "state"     : "(action) => {
+      action.enabled = window.activeMuxDesktop != null;
+      action.checked = action.checkable = (window.activeMuxDesktop && window.activeMuxDesktop.currentMuxPaneName == action.text);
+    }",
+    "script"    : "(action) => { window.activeMuxDesktop.killMuxPane(action.text) }"
+  },
+  "Mux.KillWindow" : {
+    "text"      : "() => {
+      let muxWindowNames = window.activeMuxDesktop ? window.activeMuxDesktop.muxWindowNames : [];
+      return muxWindowNames.length ? muxWindowNames : qsTr('[Window list is empty]');
+    }",
+    "state"     : "(action) => {
+      action.enabled = window.activeMuxDesktop != null;
+      action.checked = action.checkable = (window.activeMuxDesktop && window.activeMuxDesktop.currentMuxWindowName == action.text);
+    }",
+    "script"    : "(action) => { window.activeMuxDesktop.killMuxWindow(action.text) }"
+  },
+  "Mux.NewWindow" : {
+    "text"      : "&New Window",
+    "state"     : "(action) => { action.enabled = window.activeMuxDesktop != null }",
+    "script"    : "(action) => { window.activeMuxDesktop.newMuxWindow() }"
+  },
+  "Mux.RenamePane" : {
+    "text"      : "Rename &Pane",
+    "state"     : "(action) => { action.enabled = window.activeMuxDesktop != null; }",
+    "script"    : "(action) => { window.activeMuxPaneGroup.renameMuxPane() }"
+  },
+  "Mux.RenameWindow" : {
+    "text"      : "Rename &Window",
+    "state"     : "(action) => { action.enabled = window.activeMuxDesktop != null; }",
+    "script"    : "(action) => { window.activeMuxDesktop.renameMuxWindow() }"
+  },
+  "Mux.ResizePaneDown" : {
+    "text"      : "() => { return Array.from({ length: 99 }, (_, i) => i + 1); }",
+    "state"     : "(action) => { action.enabled = window.activeMuxPaneGroup != null }",
+    "script"    : "(action) => { window.activeMuxPaneGroup.resizeMuxPane(King.Bottom, action.text) }"
+  },
+  "Mux.ResizePaneLeft" : {
+    "text"      : "() => { return Array.from({ length: 99 }, (_, i) => i + 1); }",
+    "state"     : "(action) => { action.enabled = window.activeMuxPaneGroup != null }",
+    "script"    : "(action) => { window.activeMuxPaneGroup.resizeMuxPane(King.Left, action.text) }"
+  },
+  "Mux.ResizePaneRight" : {
+    "text"      : "() => { return Array.from({ length: 99 }, (_, i) => i + 1); }",
+    "state"     : "(action) => { action.enabled = window.activeMuxPaneGroup != null }",
+    "script"    : "(action) => { window.activeMuxPaneGroup.resizeMuxPane(King.Right, action.text) }"
+  },
+  "Mux.ResizePaneUp" : {
+    "text"      : "() => { return Array.from({ length: 99 }, (_, i) => i + 1); }",
+    "state"     : "(action) => { action.enabled = window.activeMuxPaneGroup != null }",
+    "script"    : "(action) => { window.activeMuxPaneGroup.resizeMuxPane(King.Top, action.text) }"
+  },
+  "Mux.SelectPane" : {
+    "text"      : "() => {
+      let muxPaneNames = window.activeMuxDesktop ? window.activeMuxDesktop.muxPaneNames : [];
+      return muxPaneNames.length ? muxPaneNames : qsTr('[Pane list is empty]');
+    }",
+    "state"     : "(action) => {
+      action.enabled = window.activeMuxDesktop != null;
+      action.checked = action.checkable = (window.activeMuxDesktop && window.activeMuxDesktop.currentMuxPaneName == action.text);
+    }",
+    "script"    : "(action) => { window.activeMuxDesktop.selectMuxPane(action.text) }"
+  },
+  "Mux.SelectPaneAbove" : {
+    "text"      : "Select Pane &Above",
+    "state"     : "(action) => { action.enabled = window.activeMuxPaneGroup != null }",
+    "script"    : "(action) => { window.activeMuxPaneGroup.selectMuxPane(King.Top) }"
+  },
+  "Mux.SelectPaneBelow" : {
+    "text"      : "Select Pane &Below",
+    "state"     : "(action) => { action.enabled = window.activeMuxPaneGroup != null }",
+    "script"    : "(action) => { window.activeMuxPaneGroup.selectMuxPane(King.Bottom) }"
+  },
+  "Mux.SelectPaneLeft" : {
+    "text"      : "Select Pane &Left",
+    "state"     : "(action) => { action.enabled = window.activeMuxPaneGroup != null }",
+    "script"    : "(action) => { window.activeMuxPaneGroup.selectMuxPane(King.Left) }"
+  },
+  "Mux.SelectPaneRight" : {
+    "text"      : "Select Pane &Right",
+    "state"     : "(action) => { action.enabled = window.activeMuxPaneGroup != null }",
+    "script"    : "(action) => { window.activeMuxPaneGroup.selectMuxPane(King.Right) }"
+  },
+  "Mux.SelectWindow" : {
+    "text"      : "() => {
+      let muxWindowNames = window.activeMuxDesktop ? window.activeMuxDesktop.muxWindowNames : [];
+      return muxWindowNames.length ? muxWindowNames : qsTr('[Window list is empty]');
+    }",
+    "state"     : "(action) => {
+      action.enabled = window.activeMuxDesktop != null;
+      action.checked = action.checkable = (window.activeMuxDesktop && window.activeMuxDesktop.currentMuxWindowName == action.text);
+    }",
+    "script"    : "(action) => { window.activeMuxDesktop.selectMuxWindow(action.text) }"
+  },
+  "Mux.SelectWindowNext" : {
+    "text"      : "Select Window &Next",
+    "state"     : "(action) => { action.enabled = window.activeMuxDesktop != null }",
+    "script"    : "(action) => { window.activeMuxDesktop.selectNextMuxWindow() }"
+  },
+  "Mux.SelectWindowPrevious" : {
+    "text"      : "Select Window &Previous",
+    "state"     : "(action) => { action.enabled = window.activeMuxDesktop != null }",
+    "script"    : "(action) => { window.activeMuxDesktop.selectPreviousMuxWindow() }"
+  },
+  "Mux.SplitPaneDown" : {
+    "text"      : "Split Pane &Down",
+    "state"     : "(action) => { action.enabled = window.activeMuxPaneGroup != null }",
+    "script"    : "(action) => { window.activeMuxPaneGroup.splitMuxPane(King.Bottom) }"
+  },
+  "Mux.SplitPaneLeft" : {
+    "text"      : "Split Pane &Left",
+    "state"     : "(action) => { action.enabled = window.activeMuxPaneGroup != null }",
+    "script"    : "(action) => { window.activeMuxPaneGroup.splitMuxPane(King.Left) }"
+  },
+  "Mux.SplitPaneRight" : {
+    "text"      : "Split Pane &Right",
+    "state"     : "(action) => { action.enabled = window.activeMuxPaneGroup != null }",
+    "script"    : "(action) => { window.activeMuxPaneGroup.splitMuxPane(King.Right) }"
+  },
+  "Mux.SplitPaneUp" : {
+    "text"      : "Split Pane &Up",
+    "state"     : "(action) => { action.enabled = window.activeMuxPaneGroup != null }",
+    "script"    : "(action) => { window.activeMuxPaneGroup.splitMuxPane(King.Top) }"
+  },
+  "Mux.SwapPane" : {
+    "text"      : "() => {
+      let muxPaneNames = window.activeMuxDesktop ? window.activeMuxDesktop.muxPaneNames : [];
+      return muxPaneNames.length ? muxPaneNames : qsTr('[Pane list is empty]');
+    }",
+    "state"     : "(action) => {
+      action.enabled = window.activeMuxDesktop != null;
+      action.checked = action.checkable = (window.activeMuxDesktop && window.activeMuxDesktop.currentMuxPaneName == action.text);
+    }",
+    "script"    : "(action) => { window.activeMuxDesktop.swapMuxPane(action.text) }"
+  },
+  "Mux.SwapPaneDown" : {
+    "text"      : "Swap Pane &Down",
+    "state"     : "(action) => { action.enabled = window.activeMuxPaneGroup != null }",
+    "script"    : "(action) => { window.activeMuxPaneGroup.swapMuxPane(King.Bottom) }"
+  },
+  "Mux.SwapPaneLeft" : {
+    "text"      : "Swap Pane &Left",
+    "state"     : "(action) => { action.enabled = window.activeMuxPaneGroup != null }",
+    "script"    : "(action) => { window.activeMuxPaneGroup.swapMuxPane(King.Left) }"
+  },
+  "Mux.SwapPaneRight" : {
+    "text"      : "Swap Pane &Right",
+    "state"     : "(action) => { action.enabled = window.activeMuxPaneGroup != null }",
+    "script"    : "(action) => { window.activeMuxPaneGroup.swapMuxPane(King.Right) }"
+  },
+  "Mux.SwapPaneUp" : {
+    "text"      : "Swap Pane &Up",
+    "state"     : "(action) => { action.enabled = window.activeMuxPaneGroup != null }",
+    "script"    : "(action) => { window.activeMuxPaneGroup.swapMuxPane(King.Top) }"
+  },
+  "Mux.SwapWindow" : {
+    "text"      : "() => {
+      let muxWindowNames = window.activeMuxDesktop ? window.activeMuxDesktop.muxWindowNames : [];
+      return muxWindowNames.length ? muxWindowNames : qsTr('[Window list is empty]');
+    }",
+    "state"     : "(action) => {
+      action.enabled = window.activeMuxDesktop != null;
+      action.checked = action.checkable = (window.activeMuxDesktop && window.activeMuxDesktop.currentMuxWindowName == action.text);
+    }",
+    "script"    : "(action) => { window.activeMuxDesktop.swapMuxWindow(action.text) }"
+  },
+  "Mux.TogglePaneZoom" : {
+    "text"      : "Toggle Pane &Zoom",
+    "icon"      : "king::fullScreen",
+    "state"     : "(action) => {
+      action.enabled = window.activeMuxPaneGroup != null;
+      action.checked = action.checkable = window.activeMuxPaneGroup ? window.activeMuxPaneGroup.isMuxPaneZooming() : false;
+    }",
+    "script"    : "(action) => { window.activeMuxPaneGroup.toggleMuxPaneZoom() }"
+  },
+  "OutlinePane.Copy" : {
+    "text"      : "&Copy",
+    "icon"      : "king::copy",
+    "state"     : "(action) => { let outline = window.activeKit.pane('OutlinePane'); action.visible = outline.hasSelection() }",
+    "script"    : "() => { let outline = window.activeKit.pane('OutlinePane'); outline.copy() }"
+  },
+  "OutlinePane.CopyOutput" : {
+    "text"      : "&Copy Output",
+    "state"     : "(action) => { let outline = window.activeKit.pane('OutlinePane'); action.visible = outline.hasSelection() }",
+    "script"    : "() => { let outline = window.activeKit.pane('OutlinePane'); outline.copyOutput() }"
+  },
+  "OutlinePane.CopyToTerminal" : {
+    "text"      : "Copy To &Terminal",
+    "state"     : "(action) => { let outline = window.activeKit.pane('OutlinePane'); action.visible = outline.hasSelection() }",
+    "script"    : "() => { let outline = window.activeKit.pane('OutlinePane'); outline.copyToTerminal() }"
+  },
+  "OutlinePane.Execute" : {
+    "text"      : "&Execute",
+    "state"     : "(action) => { let outline = window.activeKit.pane('OutlinePane'); action.visible = outline.hasSelection() }",
+    "script"    : "() => { let outline = window.activeKit.pane('OutlinePane'); outline.execute() }"
+  },
+  "OutlinePane.GotoSymbol" : {
+    "text"      : "&Goto Symbol",
+    "state"     : "(action) => { let outline = window.activeKit.pane('OutlinePane'); action.visible = outline.hasSelection() }",
+    "script"    : "() => { let outline = window.activeKit.pane('OutlinePane'); outline.gotoSymbol() }"
+  },
+  "OutlinePane.RepeatedlyExecute" : {
+    "text"      : "&Repeatedly Execute",
+    "state"     : "(action) => { let outline = window.activeKit.pane('OutlinePane'); action.visible = outline.hasSelection() }",
+    "script"    : "() => { let outline = window.activeKit.pane('OutlinePane'); outline.executeRepeatedly() }"
+  },
+  "OutlinePane.More" : {
+    "text"      : "&More",
+    "icon"      : "king::more"
+  },
+  "OutlinePane.PreviewSymbol" : {
+    "text"      : "&Preview Symbol",
+    "state"     : "(action) => { let outline = window.activeKit.pane('OutlinePane'); action.visible = outline.hasSelection() }",
+    "script"    : "() => { let outline = window.activeKit.pane('OutlinePane'); outline.preview() }"
+  },
+  "OutlinePane.ToggleSymbolPreview" : {
+    "text"      : "Enable &Symbol Preview",
+    "state"     : "(action) => { action.checkable = true; action.checked = window.option('outline.symbolPreviewEnabled') }",
+    "script"    : "(action) => { window.toggleOption('outline.symbolPreviewEnabled') }"
+  },
+  "OutlinePane.TrackTextSelection" : {
+    "text"      : "Track &Text Selection In Tree"
+  },
+  "OutlinePane.TrackTreeSelection" : {
+    "text"      : "Track &Tree Selection In Text"
+  },
+  "OutputPane.ClearText" : {
+    "text"      : "&Clear",
+    "state"     : "(action) => { let output = window.activeKit.pane('OutputPane'); let tool = output.currentTool(); let text = output.toolText(tool); action.enabled = (text != null && text.length > 0) }",
+    "script"    : "() => { let output = window.activeKit.pane('OutputPane'); output.clearText() }"
+  },
+  "OutputPane.CurrentTool" : {
+    "state"     : "(action) => { let output = window.activeKit.pane('OutputPane'); let tool = output.currentTool(); action.text = (tool.length == 0) ? '[Empty]' : tool }"
+  },
+  "OutputPane.LocateMessage" : {
+    "text"      : "&Locate Message",
+    "script"    : "() => { let output = window.activeKit.pane('OutputPane'); output.locateMessage() }"
+  },
+  "OutputPane.LocateNextMessage" : {
+    "text"      : "&Next Message",
+    "state"     : "(action) => { let output = window.activeKit.pane('OutputPane'); action.enabled = (output.nextMessage(true) != -1) }",
+    "script"    : "() => { let output = window.activeKit.pane('OutputPane'); let line = output.nextMessage(true); if (line != -1) output.locateMessage(line) }"
+  },
+  "OutputPane.LocatePreviousMessage" : {
+    "text"      : "&Previous Message",
+    "state"     : "(action) => { let output = window.activeKit.pane('OutputPane'); action.enabled = (output.nextMessage(false) != -1) }",
+    "script"    : "() => { let output = window.activeKit.pane('OutputPane'); let line = output.nextMessage(false); if (line != -1) output.locateMessage(line) }"
+  },
+  "OutputPane.StopTool" : {
+    "text"      : "&Stop",
+    "state"     : "(action) => { let output = window.activeKit.pane('OutputPane'); let tool = output.currentTool(); action.enabled = (window.activeKit.processId(tool) != 0) }",
+    "script"    : "(action) => { let output = window.activeKit.pane('OutputPane'); window.activeKit.stopTool(output.currentTool()) }"
+  },
+  "OutputPane.ToggleTabbar" : {
+    "text"      : "Show Tabs",
+    "state"     : "(action) => { let visible = window.option('output.tabbarVisible'); action.text = visible ? qsTr('Hide Tabs') : qsTr('Show Tabs') }",
+    "script"    : "(action) => { window.toggleOption('output.tabbarVisible') }"
+  },
+  "OutputPane.ToolList" : {
+    "text"      : "() => { let output = window.activeKit.pane('OutputPane'); let tools = output ? output.tools() : []; return tools.length ? tools : qsTr('[Empty]') }",
+    "state"     : "(action) => { let output = window.activeKit.pane('OutputPane'); action.checked = action.checkable = (output.currentTool() == action.text) }",
+    "script"    : "(action) => { let output = window.activeKit.pane('OutputPane'); output.showTool(action.text) }"
+  },
+  "SenderPane.AddSender" : {
+    "text"      : "&Add Sender",
+    "icon"      : "king::add",
+    "script"    : "(action) => { let sender = window.activeKit.pane('SenderPane'); sender.addSender() }"
+  },
+  "SenderPane.ClearSender" : {
+    "text"      : "&Clear Sender",
+    "icon"      : "king::clearSender",
+    "state"     : "(action) => { let sender = window.activeKit.pane('SenderPane'); let currentSender = sender.sender(); action.enabled = (!sender.isSending() && currentSender['text'] != null && currentSender['text'].length > 0) }",
+    "script"    : "() => { let sender = window.activeKit.pane('SenderPane'); sender.clearSender() }"
+  },
+  "SenderPane.RemoveSender" : {
+    "text"      : "&Remove Sender",
+    "icon"      : "king::remove",
+    "state"     : "(action) => { let sender = window.activeKit.pane('SenderPane'); action.enabled = (sender.senderCount() > 1) }",
+    "script"    : "(action) => { let sender = window.activeKit.pane('SenderPane'); sender.removeSender() }"
+  },
+  "SenderPane.StartSender" : {
+    "text"      : "Send",
+    "icon"      : "king::start",
+    "state"     : "(action) => { let sender = window.activeKit.pane('SenderPane'); action.enabled = !sender.isSending() }",
+    "script"    : "() => { let sender = window.activeKit.pane('SenderPane'); sender.startSender() }"
+  },
+  "SenderPane.StopSender" : {
+    "text"      : "Stop",
+    "icon"      : "king::stop",
+    "state"     : "(action) => { let sender = window.activeKit.pane('SenderPane'); action.enabled = sender.isSending() }",
+    "script"    : "() => { let sender = window.activeKit.pane('SenderPane'); sender.stopSender() }"
+  },
+  "SessionPane.Duplicate" : {
+    "text"      : "&Duplicate",
+    "icon"      : "king::copy",
+    "state"     : "(action) => { let session = window.activeKit.pane('SessionPane'); action.visible = session.hasSelection() }",
+    "script"    : "() => { let session = window.activeKit.pane('SessionPane'); session.duplicate() }"
+  },
+  "SessionPane.ImportOpensshSessions" : {
+    "text"      : "&Openssh sessions",
+    "script"    : "() => { let session = window.activeKit.pane('SessionPane'); session.importExternalSessions('openssh') }"
+  },
+  "SessionPane.ImportPuttySessions" : {
+    "text"      : "&Putty sessions",
+    "script"    : "() => { let session = window.activeKit.pane('SessionPane'); session.importExternalSessions('putty') }"
+  },
+  "SessionPane.ImportShellSessions" : {
+    "text"      : "&Shell sessions",
+    "script"    : "() => { let session = window.activeKit.pane('SessionPane'); session.importExternalSessions('shell') }"
+  },
+  "SessionPane.MoveTo" : {
+    "text"      : "&Move To...",
+    "icon"      : "king::moveTo",
+    "state"     : "(action) => { let session = window.activeKit.pane('SessionPane'); action.visible = session.hasSelection() }",
+    "script"    : "() => { let session = window.activeKit.pane('SessionPane'); session.moveTo() }"
+  },
+  "SessionPane.NewSession" : {
+    "text"      : "&New Session",
+    "icon"      : "king::new",
+    "script"    : "() => { let session = window.activeKit.pane('SessionPane'); session.newSession() }"
+  },
+  "SessionPane.Open" : {
+    "text"      : "&Open",
+    "state"     : "(action) => { let session = window.activeKit.pane('SessionPane'); action.visible = session.hasSelection() }",
+    "script"    : "() => { let session = window.activeKit.pane('SessionPane'); session.open() }"
+  },
+  "SessionPane.Remove" : {
+    "text"      : "&Remove",
+    "icon"      : "king::remove",
+    "state"     : "(action) => { let session = window.activeKit.pane('SessionPane'); action.visible = session.hasSelection() }",
+    "script"    : "() => { let session = window.activeKit.pane('SessionPane'); session.remove() }"
+  },
+  "SessionPane.Property" : {
+    "text"      : "&Property",
+    "state"     : "(action) => { let session = window.activeKit.pane('SessionPane'); action.visible = session.hasSelection() }",
+    "script"    : "() => { let session = window.activeKit.pane('SessionPane'); session.property() }"
+  },
+  "Terminal.CancelModem" : {
+    "text"      : "&Cancel",
+    "state"     : "(action) => { let view = terminal.activeView(); action.enabled = view ? view.isLoaded() : false }",
+    "script"    : "(action) => { window.activeText.cancelModemTransmitting() }"
+  },
+  "Terminal.ClearScreen" : {
+    "text"      : "Clear &Screen",
+    "state"     : "(action) => {
+      let activeMuxPane = window.activeMuxPane(MuxPane.Terminal);
+      action.enabled = activeMuxPane ? !activeMuxPane.isAltScreen() : false;
+    }",
+    "script"    : "() => {
+      let activeMuxPane = window.activeMuxPane(MuxPane.Terminal);
+      if (activeMuxPane) activeMuxPane.clearScreen();
+    }"
+  },
+  "Terminal.ClearScreenAndScrollback" : {
+    "text"      : "Clear &All",
+    "state"     : "(action) => {
+      let activeMuxPane = window.activeMuxPane(MuxPane.Terminal);
+      action.enabled = activeMuxPane ? !activeMuxPane.isAltScreen() : false;
+    }",
+    "script"    : "() => {
+      let activeMuxPane = window.activeMuxPane(MuxPane.Terminal);
+      if (activeMuxPane) activeMuxPane.clearScreenAndScrollback();
+    }"
+  },
+  "Terminal.ClearScrollback" : {
+    "text"      : "Clear Scroll&back",
+    "state"     : "(action) => {
+      let activeMuxPane = window.activeMuxPane(MuxPane.Terminal);
+      action.enabled = activeMuxPane != null;
+    }",
+    "script"    : "() => {
+      let activeMuxPane = window.activeMuxPane(MuxPane.Terminal);
+      if (activeMuxPane) activeMuxPane.clearScrollback();
+    }"
+  },
+  "Terminal.CompleteHistory" : {
+    "text"      : "Complete &History",
+    "state"     : "(action) => { action.enabled = terminal.activeView() != null }",
+    "script"    : "(action) => { window.activeText.completeHistory() }"
+  },
+  "Terminal.CopyCommand" : {
+    "text"      : "Copy &Command",
+    "icon"      : "king::copy",
+    "state"     : "(action) => { action.enabled = terminal.activeView() != null }",
+    "script"    : "() => { application.copy(window.activeText.commandText()) }"
+  },
+  "Terminal.CopySessionName" : {
+    "text"      : "Copy Session &Name",
+    "state"     : "(action) => { action.enabled = terminal.activeView() != null }",
+    "script"    : "() => { application.copy(terminal.activeView().tabText()) }"
+  },
+  "Terminal.CopySessionUrl" : {
+    "text"      : "Copy Session &Url",
+    "state"     : "(action) => { action.enabled = terminal.activeView() != null }",
+    "script"    : "() => { application.copy(terminal.activeView().displayUrl()) }"
+  },
+  "Terminal.Cut" : {
+    "text"      : "C&ut",
+    "icon"      : "king::cut",
+    "state"     : "(action) => { action.visible = action.enabled = terminal.activeView() ? window.activeText.isFreeTypeMode() : false }",
+    "script"    : "() => {
+      let text = window.activeText;
+
+      if (text.isFreeTypeMode()) {
+        text.copy();
+        text.eraseFreeTypeRange();
+      }
+    }"
+  },
+  "Terminal.DisconnectSession" : {
+    "text"      : "&Disconnect Session",
+    "icon"      : "king::disconnect",
+    "kits"      : ["Terminal"],
+    "state"     : "(action) => { action.enabled = terminal.activeView() != null }",
+    "script"    : "() => { terminal.activeView().disconnectSession() }"
+  },
+  "Terminal.DuplicateSession" : {
+    "text"      : "&Duplicate Session",
+    "state"     : "(action) => { action.enabled = terminal.activeView() != null }",
+    "script"    : "() => { terminal.duplicateSession(terminal.activeView(), true) }"
+  },
+  "Terminal.DuplicateSSHChannel" : {
+    "text"      : "&Duplicate SSH Channel",
+    "state"     : "(action) => { let view = terminal.activeView(); action.enabled = (view && view.protocolName().toLowerCase() == 'ssh') ? true : false }",
+    "script"    : "() => { terminal.duplicateSSHChannel(terminal.activeView(), true) }"
+  },
+  "Terminal.JoinSyncChannelA" : {
+    "text"      : "Join Channel &A",
+    "icon"      : "king::syncChannelA",
+    "script"    : "() => { terminal.activeView().joinSyncChannel('A') }"
+  },
+  "Terminal.JoinSyncChannelB" : {
+    "text"      : "Join Channel &B",
+    "icon"      : "king::syncChannelB",
+    "script"    : "() => { terminal.activeView().joinSyncChannel('B') }"
+  },
+  "Terminal.JoinSyncChannelC" : {
+    "text"      : "Join Channel &C",
+    "icon"      : "king::syncChannelC",
+    "script"    : "() => { terminal.activeView().joinSyncChannel('C') }"
+  },
+  "Terminal.JoinSyncChannelD" : {
+    "text"      : "Join Channel &D",
+    "icon"      : "king::syncChannelD",
+    "script"    : "() => { terminal.activeView().joinSyncChannel('D') }"
+  },
+  "Terminal.LeaveSyncChannels" : {
+    "text"      : "&Leave All Channels",
+    "script"    : "() => { terminal.activeView().leaveSyncChannels() }"
+  },
+  "Terminal.ManageOneKeys" : {
+    "text"      : "&OneKeys...",
+    "icon"      : "king::onekey",
+    "kits"      : ["Terminal"],
+    "script"    : "() => { terminal.openOneKeysDialog() }"
+  },
+  "Terminal.ManageSessionTriggers" : {
+    "text"      : "Session &Triggers...",
+    "icon"      : "king::trigger",
+    "kits"      : ["Terminal"],
+    "state"     : "(action) => { action.enabled = terminal.activeView() != null }",
+    "script"    : "() => { window.activeText.openSessionTriggersDialog() }"
+  },
+  "Terminal.ManageTriggers" : {
+    "text"      : "T&riggers...",
+    "icon"      : "king::trigger",
+    "kits"      : ["Terminal"],
+    "script"    : "() => { terminal.openTriggersDialog() }"
+  },
+  "Terminal.ManageTunnels" : {
+    "text"      : "T&unnels...",
+    "icon"      : "king::tunnel",
+    "kits"      : ["Terminal"],
+    "script"    : "() => { terminal.openTunnelsDialog() }"
+  },
+  "Terminal.MoveToNextCommand" : {
+    "text"      : "Goto &Next Command",
+    "state"     : "(action) => { let text = window.activeText; action.enabled = text ? !text.isBinary() : false }",
+    "script"    : "(action, argument) => { window.activeText.moveTo('command', Number(argument.count) || 1) }"
+  },
+  "Terminal.MoveToPreviousCommand" : {
+    "text"      : "Goto &Previous Command",
+    "state"     : "(action) => { let text = window.activeText; action.enabled = text ? !text.isBinary() : false }",
+    "script"    : "(action, argument) => { window.activeText.moveTo('command', -Number(argument.count) || -1) }"
+  },
+  "Terminal.NewSession" : {
+    "text"      : "&New Session",
+    "icon"      : "king::new",
+    "kits"      : ["Browser", "Commander", "Editor", "Terminal"],
+    "script"    : "() => { terminal.open() }"
+  },
+  "Terminal.OpenDefaultSessionSettings" : {
+    "text"      : "&Default Session Settings...",
+    "script"    : "(action) => { terminal.openDefaultSessionSettings() }"
+  },
+  "Terminal.OpenLogFile" : {
+    "text"      : "Open &Log File",
+    "state"     : "(action) => { action.enabled = terminal.activeView() ? window.activeText.isLogFileExists() : false }",
+    "script"    : "(action) => { window.activeText.openLogFile() }"
+  },
+  "Terminal.OpenLogFolder" : {
+    "text"      : "Open Log &Folder",
+    "state"     : "(action) => { action.enabled = terminal.activeView() != null }",
+    "script"    : "(action) => { window.activeText.openLogFolder() }"
+  },
+  "Terminal.OpenLogSettings" : {
+    "text"      : "&Settings...",
+    "state"     : "(action) => { action.enabled = terminal.activeView() ? terminal.activeView().isPermanentSession() : false }",
+    "script"    : "(action) => { terminal.activeView().openLogSettings() }"
+  },
+  "Terminal.OpenSession" : {
+    "text"      : "&Open Session...",
+    "icon"      : "king::open",
+    "kits"      : ["Terminal"],
+    "script"    : "() => { terminal.openSessionDialog() }"
+  },
+  "Terminal.OpenSessionSettings" : {
+    "text"      : "Session &Settings...",
+    "state"     : "(action) => { action.enabled = terminal.activeView() ? terminal.activeView().isPermanentSession() : false }",
+    "script"    : "(action) => { terminal.activeView().openSessionSettings() }"
+  },
+  "Terminal.PasteSelectedText" : {
+    "text"      : "Paste &Selected Text",
+    "icon"      : "king::paste",
+    "state"     : "(action) => { action.visible = action.enabled = terminal.activeView() ? (window.activeText.isFreeTypeMode() == false) : false }",
+    "script"    : "() => {
+      let text = window.activeText;
+
+      if (text) {
+        let selectionText = text.selectionText();
+
+        if (text.keyMode == King.LocalMode) {
+          text.keyMode = King.RemoteMode;
+        }
+        text.pasteText(selectionText);
+      }
+    }"
+  },
+  "Terminal.PauseLogger" : {
+    "text"      : "&Pause",
+    "state"     : "(action) => { action.enabled = terminal.activeView() ? (window.activeText.isLoggerStarted() && !window.activeText.isLoggerPaused()) : false }",
+    "script"    : "(action) => { window.activeText.pauseLogger() }"
+  },
+  "Terminal.ReceiveXModem" : {
+    "text"      : "Receive &XModem...",
+    "state"     : "(action) => { let view = terminal.activeView(); action.enabled = view ? view.isLoaded() && window.activeText.isModemSupported(King.XModem, King.Download) && !window.activeText.isModemTransmitting() : false }",
+    "script"    : "(action) => { window.activeText.receiveBinary(King.XModem) }"
+  },
+  "Terminal.ReceiveYModem" : {
+    "text"      : "Receive &YModem...",
+    "state"     : "(action) => { let view = terminal.activeView(); action.enabled = view ? view.isLoaded() && window.activeText.isModemSupported(King.YModem, King.Download) && !window.activeText.isModemTransmitting() : false }",
+    "script"    : "(action) => { window.activeText.receiveBinary(King.YModem) }"
+  },
+  "Terminal.ReceiveZModem" : {
+    "text"      : "Receive &ZModem...",
+    "state"     : "(action) => { let view = terminal.activeView(); action.enabled = view ? view.isLoaded() && window.activeText.isModemSupported(King.ZModem, King.Download) && !window.activeText.isModemTransmitting() : false }",
+    "script"    : "(action) => { window.activeText.receiveBinary(King.ZModem) }"
+  },
+  "Terminal.ReconnectSession" : {
+    "text"      : "&Reconnect Session",
+    "icon"      : "king::reconnect",
+    "kits"      : ["Terminal"],
+    "state"     : "(action) => { action.enabled = terminal.activeView() != null }",
+    "script"    : "() => { terminal.activeView().reconnectSession() }"
+  },
+  "Terminal.ResetCharacterSet" : {
+    "text"      : "Reset &Character Set",
+    "state"     : "(action) => { action.enabled = terminal.activeView() != null }",
+    "script"    : "() => { window.activeText.resetCharacterSet() }"
+  },
+  "Terminal.ResetHard" : {
+    "text"      : "&Hard Reset",
+    "state"     : "(action) => { action.enabled = terminal.activeView() != null }",
+    "script"    : "() => { window.activeText.resetHard() }"
+  },
+  "Terminal.ResetSoft" : {
+    "text"      : "&Soft Reset",
+    "state"     : "(action) => { action.enabled = terminal.activeView() != null }",
+    "script"    : "() => { window.activeText.resetSoft() }"
+  },
+  "Terminal.ResumeLogger" : {
+    "text"      : "&Resume",
+    "state"     : "(action) => { action.enabled = terminal.activeView() ? (window.activeText.isLoggerStarted() && window.activeText.isLoggerPaused()) : false }",
+    "script"    : "(action) => { window.activeText.resumeLogger() }"
+  },
+  "Terminal.Save" : {
+    "text"      : "&Save Session",
+    "icon"      : "king::save",
+    "state"     : "(action) => { action.enabled = terminal.activeView() != null }",
+    "script"    : "() => { window.activeText.save() }"
+  },
+  "Terminal.SaveSelectionAs" : {
+    "text"      : "Save Se&lection As...",
+    "state"     : "(action) => { action.enabled = terminal.activeView() != null }",
+    "script"    : "() => { window.activeText.saveSelectionAs() }"
+  },
+  "Terminal.SchemeList" : {
+    "text"      : "() => { let schemeNames = terminal.schemeNames(); return schemeNames.length ? schemeNames : qsTr('[Scheme list is empty]') }",
+    "state"     : "(action) => {
+      let activeMuxPane = window.activeMuxPane(MuxPane.Terminal);
+      action.checked = action.checkable = activeMuxPane ? (activeMuxPane.scheme() == action.text) : false;
+    }",
+    "script"    : "(action) => {
+      let activeMuxPane = window.activeMuxPane(MuxPane.Terminal);
+      if (activeMuxPane) { activeMuxPane.setScheme(action.text); }
+    }"
+  },
+  "Terminal.SelectAll" : {
+    "text"      : "Select &All",
+    "script"    : "() => { window.activeText.selectAll() }"
+  },
+  "Terminal.SelectCommand" : {
+    "text"      : "Select &Command",
+    "state"     : "(action) => { let text = window.activeText; action.enabled = text ? !text.isBinary() : false }",
+    "script"    : "() => { window.activeText.selectCommand() }"
+  },
+  "Terminal.SelectFold" : {
+    "text"      : "Select &Fold",
+    "state"     : "(action) => { let text = window.activeText; action.enabled = text ? !text.isBinary() : false }",
+    "script"    : "() => { window.activeText.selectFold() }"
+  },
+  "Terminal.SendXModem" : {
+    "text"      : "Send &XModem...",
+    "state"     : "(action) => { let view = terminal.activeView(); action.enabled = view ? view.isLoaded() && window.activeText.isModemSupported(King.XModem, King.Upload) && !window.activeText.isModemTransmitting() : false }",
+    "script"    : "(action) => { window.activeText.sendBinary(King.XModem) }"
+  },
+  "Terminal.SendYModem" : {
+    "text"      : "Send &YModem...",
+    "state"     : "(action) => { let view = terminal.activeView(); action.enabled = view ? view.isLoaded() && window.activeText.isModemSupported(King.YModem, King.Upload) && !window.activeText.isModemTransmitting() : false }",
+    "script"    : "(action) => { window.activeText.sendBinary(King.YModem) }"
+  },
+  "Terminal.SendZModem" : {
+    "text"      : "Send &ZModem...",
+    "state"     : "(action) => { let view = terminal.activeView(); action.enabled = view ? view.isLoaded() && window.activeText.isModemSupported(King.ZModem, King.Upload) && !window.activeText.isModemTransmitting() : false }",
+    "script"    : "(action) => { window.activeText.sendBinary(King.ZModem) }"
+  },
+  "Terminal.StartLogger" : {
+    "text"      : "&Start...",
+    "state"     : "(action) => {
+      let activeMuxPane = window.activeMuxPane(MuxPane.Terminal);
+      action.enabled = activeMuxPane ? !activeMuxPane.isLoggerStarted() : false
+    }",
+    "script"    : "(action) => {
+      let activeMuxPane = window.activeMuxPane(MuxPane.Terminal);
+      if (activeMuxPane) activeMuxPane.startLogger();
+    }"
+  },
+  "Terminal.StopLogger" : {
+    "text"      : "S&top",
+    "state"     : "(action) => {
+      let activeMuxPane = window.activeMuxPane(MuxPane.Terminal);
+      action.enabled = activeMuxPane ? activeMuxPane.isLoggerStarted() : false
+    }",
+    "script"    : "(action) => {
+      let activeMuxPane = window.activeMuxPane(MuxPane.Terminal);
+      if (activeMuxPane) activeMuxPane.stopLogger() }"
+  },
+  "Terminal.SyncInput" : {
+    "text"      : "&Sync Input...",
+    "icon"      : "king::syncInput",
+    "kits"      : ["Terminal"],
+    "script"    : "() => { terminal.openSyncInputDialog() }"
+  },
+  "Text.ActivateNextSelection" : {
+    "text"      : "Activate &Next Selection",
+    "script"    : "() => { window.activeText.activateNextSelection() }"
+  },
+  "Text.ActivatePreviousSelection" : {
+    "text"      : "Activate &Previous Selection",
+    "script"    : "() => { window.activeText.activatePreviousSelection() }"
+  },
+  "Text.AdvancedSort" : {
+    "text"      : "Advanced Sort...",
+    "kits"      : ["Editor"] //,
+    //"script"    : "() => { window.activeText.advancedSortDialog() }"
+  },
+  "Text.AutoCloseTag" : {
+    "text"      : "Auto Close &HTML/XML Tags",
+    "kits"      : ["Editor"]
+  },
+  "Text.CancelSelection" : {
+    "text"      : "&Cancel Selection",
+    "script"    : "() => { window.activeText.cancelSelection() }"
+  },
+  "Text.Comment" : {
+    "text"      : "&Comment Selection",
+    "icon"      : "king::comment",
+    "kits"      : ["Editor"],
+    "script"    : "() => { window.activeText.comment() }"
+  },
+  "Text.CommentBlock" : {
+    "text"      : "Comment Selection (&Block Mode)",
+    "kits"      : ["Editor"]
+  },
+  "Text.CommentLine" : {
+    "text"      : "Comment Selection (&Line Mode)",
+    "kits"      : ["Editor"]
+  },
+  "Text.CompleteWord" : {
+    "text"      : "Complete &Word"
+  },
+  "Text.ConvertAnsiToOem" : {
+    "text"      : "&ANSI to OEM",
+    "kits"      : ["Editor"]
+  },
+  "Text.ConvertOemToAnsi" : {
+    "text"      : "&OEM to ANSI",
+    "kits"      : ["Editor"]
+  },
+  "Text.ConvertSpaceToTab" : {
+    "text"      : "&Spaces to Tabs",
+    "kits"      : ["Editor"],
+    "script"    : "() => { window.activeText.convertSpaceToTab() }"
+  },
+  "Text.ConvertTabToSpace" : {
+    "text"      : "&Tabs to Spaces",
+    "kits"      : ["Editor"],
+    "script"    : "() => { window.activeText.convertTabToSpace() }"
+  },
+  "Text.Copy" : {
+    "text"      : "&Copy",
+    "icon"      : "king::copy",
+    "script"    : "() => { window.activeText.copy() }"
+  },
+  "Text.Cut" : {
+    "text"      : "Cu&t",
+    "icon"      : "king::cut",
+    "kits"      : ["Editor"],
+    "script"    : "() => { window.activeText.cut() }"
+  },
+  "Text.DecreaseLineIndent" : {
+    "text"      : "&Decrease Line Indent",
+    "icon"      : "king::decreaseIndent",
+    "kits"      : ["Editor"],
+    "script"    : "() => { window.activeText.decreaseLineIndent() }"
+  },
+  "Text.DeleteBack" : {
+    "text"      : "&Backspace",
+    "kits"      : ["Editor"],
+    "script"    : "() => { window.activeText.deleteBack() }"
+  },
+  "Text.DeleteChar" : {
+    "text"      : "&Delete",
+    "icon"      : "king::delete",
+    "kits"      : ["Editor"],
+    "script"    : "() => { window.activeText.deleteChar() }"
+  },
+  "Text.DeleteLine" : {
+    "text"      : "Whole &Line",
+    "kits"      : ["Editor"],
+    "script"    : "() => { window.activeText.deleteLine() }"
+  },
+  "Text.DeleteLineToEnd" : {
+    "text"      : "To Line &End",
+    "kits"      : ["Editor"],
+    "script"    : "() => { window.activeText.deleteLineToEnd() }"
+  },
+  "Text.DeleteLineToStart" : {
+    "text"      : "To Line &Start",
+    "kits"      : ["Editor"],
+    "script"    : "() => { window.activeText.deleteLineToStart() }"
+  },
+  "Text.DeleteWord" : {
+    "text"      : "Whole &Word",
+    "kits"      : ["Editor"],
+    "script"    : "() => { window.activeText.deleteWord() }"
+  },
+  "Text.DeleteWordToEnd" : {
+    "text"      : "To Word &End",
+    "kits"      : ["Editor"],
+    "script"    : "() => { window.activeText.deleteWordToEnd() }"
+  },
+  "Text.DeleteWordToStart" : {
+    "text"      : "To Word &Start",
+    "kits"      : ["Editor"],
+    "script"    : "() => { window.activeText.deleteWordToStart() }"
+  },
+  "Text.DropSelection" : {
+    "text"      : "&Drop Selection",
+    "script"    : "() => { window.activeText.dropSelection() }"
+  },
+  "Text.Duplicate" : {
+    "text"      : "D&uplicate",
+    "kits"      : ["Editor"],
+    "script"    : "() => { window.activeText.duplicate() }"
+  },
+  "Text.ExchangeCaretAnchor" : {
+    "text"      : "E&xchange Caret And Anchor",
+    "script"    : "() => { window.activeText.exchangeCaretAnchor() }"
+  },
+  "Text.ExpandSnippet" : {
+    "text"      : "E&xpand Snippet",
+    "script"    : "() => { window.activeText.expandSnippet() }"
+  },
+  "Text.Find" : {
+    "text"      : "&Find...",
+    "icon"      : "king::find",
+    "script"    : "() => { window.activeKit.showPane('FindPane') }"
+  },
+  "Text.FindInFiles" : {
+    "text"      : "F&ind in Files...",
+    "icon"      : "king::findInFiles",
+    "script"    : "() => { window.activeKit.showPane('FindInFilesPane') }"
+  },
+  "Text.FindNext" : {
+    "text"      : "Find &Next",
+    "script"    : "() => { window.activeText.findNext(false) }"
+  },
+  "Text.FindNextSelection" : {
+    "text"      : "Find Ne&xt Selection",
+    "script"    : "() => { window.activeText.findNext(true) }"
+  },
+  "Text.FindPrevious" : {
+    "text"      : "Find &Previous",
+    "script"    : "() => { window.activeText.findPrevious(false) }"
+  },
+  "Text.FindPreviousSelection" : {
+    "text"      : "Find Pre&vious Selection",
+    "script"    : "() => { window.activeText.findPrevious(true) }"
+  },
+  "Text.Fold" : {
+    "text"      : "&Fold",
+    "state"     : "(action) => { let text = window.activeText; action.enabled = text ? !text.isBinary() : false }",
+    "script"    : "() => {
+      let text = window.activeText;
+      let line = text.visibleLineFromPosition(text.selectionCaretP());
+
+      text.fold(line, false);
+    }"
+  },
+  "Text.FoldAll" : {
+    "text"      : "Fold &All",
+    "state"     : "(action) => { let text = window.activeText; action.enabled = text ? !text.isBinary() : false }",
+    "script"    : "() => { let text = window.activeText; text.fold(0, text.length) }"
+  },
+  "Text.FoldCategory" : {
+    "text"      : "Fold &Category",
+    "state"     : "(action) => { let text = window.activeText; action.enabled = text ? !text.isBinary() : false }"
+  },
+  "Text.FoldInside" : {
+    "text"      : "Fold &Inside",
+    "state"     : "(action) => { let text = window.activeText; action.enabled = text ? !text.isBinary() : false }",
+    "script"    : "() => {
+      let text = window.activeText;
+      let line = text.visibleLineFromPosition(text.selectionCaretP());
+
+      text.fold(line, true);
+    }"
+  },
+  "Text.FormatSelection" : {
+    "text"      : "&Format Selection",
+    "icon"      : "king::formatSelection",
+    "kits"      : ["Editor"],
+    "script"    : "() => { window.activeText.formatSelection() }"
+  },
+  "Text.HexBaseBinary" : {
+    "text"      : "&2",
+    "state"     : "(action) => { action.checked = action.checkable = (window.option('text.hexBase') == 2) }",
+    "script"    : "() => { window.setOption('text.hexBase', 2) }"
+  },
+  "Text.HexBaseSeptenary" : {
+    "text"      : "&7",
+    "state"     : "(action) => { action.checked = action.checkable = (window.option('text.hexBase') == 7) }",
+    "script"    : "() => { window.setOption('text.hexBase', 7) }"
+  },
+  "Text.HexBaseOctal" : {
+    "text"      : "&8",
+    "state"     : "(action) => { action.checked = action.checkable = (window.option('text.hexBase') == 8) }",
+    "script"    : "() => { window.setOption('text.hexBase', 8) }"
+  },
+  "Text.HexBaseDecimal" : {
+    "text"      : "&10",
+    "state"     : "(action) => { action.checked = action.checkable = (window.option('text.hexBase') == 10) }",
+    "script"    : "() => { window.setOption('text.hexBase', 10) }"
+  },
+  "Text.HexBaseHexadecimal" : {
+    "text"      : "1&6",
+    "state"     : "(action) => { action.checked = action.checkable = (window.option('text.hexBase') == 16) }",
+    "script"    : "() => { window.setOption('text.hexBase', 16) }"
+  },
+  "Text.HexGroupChar" : {
+    "text"      : "&1 Char",
+    "state"     : "(action) => { action.checked = action.checkable = (window.option('text.hexGroupChars') == 1) }",
+    "script"    : "() => { window.setOption('text.hexGroupChars', 1) }"
+  },
+  "Text.HexGroupWord" : {
+    "text"      : "&2 Chars",
+    "state"     : "(action) => { action.checked = action.checkable = (window.option('text.hexGroupChars') == 2) }",
+    "script"    : "() => { window.setOption('text.hexGroupChars', 2) }"
+  },
+  "Text.HexGroupDoubleWord" : {
+    "text"      : "&4 Chars",
+    "state"     : "(action) => { action.checked = action.checkable = (window.option('text.hexGroupChars') == 4) }",
+    "script"    : "() => { window.setOption('text.hexGroupChars', 4) }"
+  },
+  "Text.HexGroupQuadWord" : {
+    "text"      : "&8 Chars",
+    "state"     : "(action) => { action.checked = action.checkable = (window.option('text.hexGroupChars') == 8) }",
+    "script"    : "() => { window.setOption('text.hexGroupChars', 8) }"
+  },
+  "Text.HexShow8Columns" : {
+    "text"      : "&8 Columns",
+    "state"     : "(action) => { action.checked = action.checkable = (window.option('text.hexColumns') == 8) }",
+    "script"    : "() => { window.setOption('text.hexColumns', 8) }"
+  },
+  "Text.HexShow16Columns" : {
+    "text"      : "&16 Columns",
+    "state"     : "(action) => { action.checked = action.checkable = (window.option('text.hexColumns') == 16) }",
+    "script"    : "() => { window.setOption('text.hexColumns', 16) }"
+  },
+  "Text.HexShow24Columns" : {
+    "text"      : "&24 Columns",
+    "state"     : "(action) => { action.checked = action.checkable = (window.option('text.hexColumns') == 24) }",
+    "script"    : "() => { window.setOption('text.hexColumns', 24) }"
+  },
+  "Text.HexShow32Columns" : {
+    "text"      : "&32 Columns",
+    "state"     : "(action) => { action.checked = action.checkable = (window.option('text.hexColumns') == 32) }",
+    "script"    : "() => { window.setOption('text.hexColumns', 32) }"
+  },
+  "Text.HideWhiteSpace" : {
+    "text"      : "&Hide All",
+    "state"     : "(action) => { action.checked = action.checkable = (window.option('text.whiteSpaceVisibility') == King.Nowhere) }",
+    "script"    : "() => { window.setOption('text.whiteSpaceVisibility', King.Nowhere) }"
+  },
+  "Text.HighlightMatchingPair" : {
+    "text"      : "Highlight Matching &Pair"
+  },
+  "Text.HighlightText" : {
+    "text"      : "&Highlight Text...",
+    "icon"      : "king::highlightText",
+    "script"    : "() => { window.activeText.openHighlightTextDialog() }"
+  },
+  "Text.IncreaseLineIndent" : {
+    "text"      : "&Increase Line Indent",
+    "icon"      : "king::increaseIndent",
+    "kits"      : ["Editor"],
+    "script"    : "() => { window.activeText.increaseLineIndent() }"
+  },
+  "Text.InsertLines" : {
+    "text"      : "&Insert Lines",
+    "kits"      : ["Editor"]
+  },
+  "Text.InvertSelection" : {
+    "text"      : "&Invert Selection",
+    "script"    : "() => { window.activeText.invertSelection() }"
+  },
+  "Text.JoinLines" : {
+    "text"      : "&Join Lines",
+    "kits"      : ["Editor"]
+  },
+  "Text.LockSelection" : {
+    "text"      : "&Lock Selection",
+    "script"    : "() => { window.activeText.lockSelection() }"
+  },
+  "Text.MakeInverseCase" : {
+    "text"      : "To &Inverse Case",
+    "kits"      : ["Editor"],
+    "script"    : "() => { window.activeText.makeInverseCase() }"
+  },
+  "Text.MakeLowerCase" : {
+    "text"      : "To &Lower Case",
+    "kits"      : ["Editor"],
+    "script"    : "() => { window.activeText.makeLowerCase() }"
+  },
+  "Text.MakeTitleCase" : {
+    "text"      : "To &Title Case",
+    "kits"      : ["Editor"],
+    "script"    : "() => { window.activeText.makeTitleCase() }"
+  },
+  "Text.MakeUpperCase" : {
+    "text"      : "To &Upper Case",
+    "kits"      : ["Editor"],
+    "script"    : "() => { window.activeText.makeUpperCase() }"
+  },
+  "Text.ModifyLines" : {
+    "text"      : "&Modify Lines...",
+    "kits"      : ["Editor"]
+  },
+  "Text.MoveToDocumentEnd" : {
+    "text"      : "&End Of Document",
+    "script"    : "() => { window.activeText.moveTo('documentEnd') }"
+  },
+  "Text.MoveToDocumentStart" : {
+    "text"      : "&Start Of Document",
+    "script"    : "() => { window.activeText.moveTo('documentStart') }"
+  },
+  "Text.MoveToLineEnd" : {
+    "text"      : "&End Of Line",
+    "script"    : "() => { window.activeText.moveTo('lineEnd') }"
+  },
+  "Text.MoveToLineHome" : {
+    "text"      : "&Home Of Line",
+    "script"    : "() => { window.activeText.moveTo('lineHome') }"
+  },
+  "Text.MoveToLineStart" : {
+    "text"      : "&Start Of Line",
+    "script"    : "() => { window.activeText.moveTo('lineStart') }"
+  },
+  "Text.MoveToNextChar" : {
+    "text"      : "Char &Right",
+    "script"    : "(action, argument) => { window.activeText.moveTo('char', Number(argument.count) || 1) }"
+  },
+  "Text.MoveToNextFold" : {
+    "text"      : "&Next Fold",
+    "state"     : "(action) => { let text = window.activeText; action.enabled = text ? !text.isBinary() : false }",
+    "script"    : "(action, argument) => { window.activeText.moveTo('fold', Number(argument.count) || 1) }"
+  },
+  "Text.MoveToNextIndentation" : {
+    "text"      : "&Next Indentation",
+    "state"     : "(action) => { let text = window.activeText; action.enabled = text ? !text.isBinary() : false }",
+    "script"    : "(action, argument) => { window.activeText.moveTo('indentation', Number(argument.count) || 1) }"
+  },
+  "Text.MoveToNextLine" : {
+    "text"      : "Line &Down",
+    "script"    : "(action, argument) => { window.activeText.moveTo('line', Number(argument.count) || 1) }"
+  },
+  "Text.MoveToNextPage" : {
+    "text"      : "&Next Page",
+    "script"    : "(action, argument) => { window.activeText.moveTo('page', Number(argument.count) || 1) }"
+  },
+  "Text.MoveToNextPair" : {
+    "text"      : "&Next Pair",
+    "state"     : "(action) => { let text = window.activeText; action.enabled = text ? !text.isBinary() : false }",
+    "script"    : "(action, argument) => { window.activeText.moveTo('pair', Number(argument.count) || 1) }"
+  },
+  "Text.MoveToNextParagraph" : {
+    "text"      : "&Next Paragraph",
+    "state"     : "(action) => { let text = window.activeText; action.enabled = text ? !text.isBinary() : false }",
+    "script"    : "(action, argument) => { window.activeText.moveTo('paragraph', Number(argument.count) || 1) }"
+  },
+  "Text.MoveToNextScope" : {
+    "text"      : "&Next Scope",
+    "script"    : "(action, argument) => { window.activeText.moveTo('scope', Number(argument.count) || 1) }"
+  },
+  "Text.MoveToNextSegmentEnd" : {
+    "text"      : "Next Segment &End",
+    "state"     : "(action) => { let text = window.activeText; action.enabled = text ? !text.isBinary() : false }",
+    "script"    : "(action, argument) => { window.activeText.moveTo('segmentEnd', Number(argument.count) || 1) }"
+  },
+  "Text.MoveToNextSegmentStart" : {
+    "text"      : "Next Segment &Start",
+    "state"     : "(action) => { let text = window.activeText; action.enabled = text ? !text.isBinary() : false }",
+    "script"    : "(action, argument) => { window.activeText.moveTo('segmentStart', Number(argument.count) || 1) }"
+  },
+  "Text.MoveToNextStutteredPage" : {
+    "text"      : "&Next Stuttered Page",
+    "script"    : "(action, argument) => { window.activeText.moveTo('stutteredPage', Number(argument.count) || 1) }"
+  },
+  "Text.MoveToNextWordEnd" : {
+    "text"      : "Next Word &End",
+    "state"     : "(action) => { let text = window.activeText; action.enabled = text ? !text.isBinary() : false }",
+    "script"    : "(action, argument) => { window.activeText.moveTo('wordEnd', Number(argument.count) || 1) }"
+  },
+  "Text.MoveToNextWordPart" : {
+    "text"      : "Next Word &Part",
+    "state"     : "(action) => { let text = window.activeText; action.enabled = text ? !text.isBinary() : false }",
+    "script"    : "(action, argument) => { window.activeText.moveTo('wordPart', Number(argument.count) || 1) }"
+  },
+  "Text.MoveToNextWordStart" : {
+    "text"      : "Next &Word",
+    "state"     : "(action) => { let text = window.activeText; action.enabled = text ? !text.isBinary() : false }",
+    "script"    : "(action, argument) => { window.activeText.moveTo('wordStart', Number(argument.count) || 1) }"
+  },
+  "Text.MoveToPairEnd" : {
+    "text"      : "&End Of Pair",
+    "state"     : "(action) => { let text = window.activeText; action.enabled = text ? !text.isBinary() : false }",
+    "script"    : "() => { window.activeText.moveTo('pairEnd') }"
+  },
+  "Text.MoveToPairStart" : {
+    "text"      : "&Start Of Pair",
+    "state"     : "(action) => { let text = window.activeText; action.enabled = text ? !text.isBinary() : false }",
+    "script"    : "() => { window.activeText.moveTo('pairStart') }"
+  },
+  "Text.MoveToPreviousChar" : {
+    "text"      : "Char &Left",
+    "script"    : "(action, argument) => { window.activeText.moveTo('char', -Number(argument.count) || -1) }"
+  },
+  "Text.MoveToPreviousFold" : {
+    "text"      : "&Previous Fold",
+    "state"     : "(action) => { let text = window.activeText; action.enabled = text ? !text.isBinary() : false }",
+    "script"    : "(action, argument) => { window.activeText.moveTo('fold', -Number(argument.count) || -1) }"
+  },
+  "Text.MoveToPreviousIndentation" : {
+    "text"      : "&Previous Indentation",
+    "state"     : "(action) => { let text = window.activeText; action.enabled = text ? !text.isBinary() : false }",
+    "script"    : "(action, argument) => { window.activeText.moveTo('indentation', -Number(argument.count) || -1) }"
+  },
+  "Text.MoveToPreviousLine" : {
+    "text"      : "Line &Up",
+    "script"    : "(action, argument) => { window.activeText.moveTo('line', -Number(argument.count) || -1) }"
+  },
+  "Text.MoveToPreviousPage" : {
+    "text"      : "&Previous Page",
+    "script"    : "(action, argument) => { window.activeText.moveTo('page', -Number(argument.count) || -1) }"
+  },
+  "Text.MoveToPreviousPair" : {
+    "text"      : "&Previous Pair",
+    "state"     : "(action) => { let text = window.activeText; action.enabled = text ? !text.isBinary() : false }",
+    "script"    : "(action, argument) => { window.activeText.moveTo('pair', -Number(argument.count) || -1) }"
+  },
+  "Text.MoveToPreviousParagraph" : {
+    "text"      : "&Previous Paragraph",
+    "state"     : "(action) => { let text = window.activeText; action.enabled = text ? !text.isBinary() : false }",
+    "script"    : "(action, argument) => { window.activeText.moveTo('paragraph', -Number(argument.count) || -1) }"
+  },
+  "Text.MoveToPreviousScope" : {
+    "text"      : "&Previous Scope",
+    "script"    : "(action, argument) => { window.activeText.moveTo('scope', -Number(argument.count) || -1) }"
+  },
+  "Text.MoveToPreviousSegmentEnd" : {
+    "text"      : "Previous Segment &End",
+    "state"     : "(action) => { let text = window.activeText; action.enabled = text ? !text.isBinary() : false }",
+    "script"    : "(action, argument) => { window.activeText.moveTo('segmentEnd', -Number(argument.count) || -1) }"
+  },
+  "Text.MoveToPreviousSegmentStart" : {
+    "text"      : "Previous Segment &Start",
+    "state"     : "(action) => { let text = window.activeText; action.enabled = text ? !text.isBinary() : false }",
+    "script"    : "(action, argument) => { window.activeText.moveTo('segmentStart', -Number(argument.count) || -1) }"
+  },
+  "Text.MoveToPreviousStutteredPage" : {
+    "text"      : "&Previous Stuttered Page",
+    "script"    : "(action, argument) => { window.activeText.moveTo('stutteredPage', -Number(argument.count) || -1) }"
+  },
+  "Text.MoveToPreviousWordEnd" : {
+    "text"      : "Previous Word &End",
+    "state"     : "(action) => { let text = window.activeText; action.enabled = text ? !text.isBinary() : false }",
+    "script"    : "(action, argument) => { window.activeText.moveTo('wordEnd', -Number(argument.count) || -1) }"
+  },
+  "Text.MoveToPreviousWordPart" : {
+    "text"      : "Previous Word &Part",
+    "state"     : "(action) => { let text = window.activeText; action.enabled = text ? !text.isBinary() : false }",
+    "script"    : "(action, argument) => { window.activeText.moveTo('wordPart', -Number(argument.count) || -1) }"
+  },
+  "Text.MoveToPreviousWordStart" : {
+    "text"      : "Previous &Word",
+    "state"     : "(action) => { let text = window.activeText; action.enabled = text ? !text.isBinary() : false }",
+    "script"    : "(action, argument) => { window.activeText.moveTo('wordStart', -Number(argument.count) || -1) }"
+  },
+  "Text.NewLine" : {
+    "text"      : "&New Line",
+    "script"    : "() => { window.activeText.newLine() }"
+  },
+  "Text.Paste" : {
+    "text"      : "&Paste",
+    "icon"      : "king::paste",
+    "script"    : "() => {
+      let text = window.activeText;
+
+      if (text.keyMode == King.CommandMode) {
+        text.keyMode = King.NormalMode;
+      } else if (text.keyMode == King.LocalMode) {
+        text.keyMode = King.RemoteMode;
+      }
+      text.paste();
+    }"
+  },
+  "Text.Redo" : {
+    "text"      : "&Redo",
+    "icon"      : "king::redo",
+    "kits"      : ["Editor"],
+    "state"     : "(action) => { let text = window.activeText; action.enabled = text ? text.canRedo() : false }",
+    "script"    : "() => { window.activeText.redo() }"
+  },
+  "Text.RemoveBlankLines" : {
+    "text"      : "Remove &Blank Lines",
+    "kits"      : ["Editor"]
+  },
+  "Text.RemoveDuplicateLines" : {
+    "text"      : "&Remove Duplicate Lines",
+    "kits"      : ["Editor"],
+    "script"    : "() => { window.activeText.removeDuplicateLines(King.CaseSensitive) }"
+  },
+  "Text.Replace" : {
+    "text"      : "&Replace...",
+    "icon"      : "king::replace",
+    "script"    : "() => { window.activeKit.showPane('ReplacePane') }"
+  },
+  "Text.ReplaceInFiles" : {
+    "text"      : "R&eplace in Files...",
+    "icon"      : "king::replaceInFiles",
+    "script"    : "() => { window.activeKit.showPane('ReplaceInFilesPane') }"
+  },
+  "Text.ResetZoom" : {
+    "text"      : "&Reset Zoom",
+    "script"    : "() => { window.activeText.resetZoom() }"
+  },
+  "Text.ReverseLines" : {
+    "text"      : "Sort Lines In &Reverse Order",
+    "kits"      : ["Editor"],
+    "script"    : "() => { window.activeText.reverseLines() }"
+  },
+  "Text.Save" : {
+    "text"      : "&Save",
+    "icon"      : "king::save",
+    "state"     : "(action) => { action.enabled = window.isScope('.view.text') ? window.activeView().isLoaded() : window.isScope('.text') }",
+    "script"    : "() => { window.activeText.save() }"
+  },
+  "Text.SaveAs" : {
+    "text"      : "Save &As...",
+    "state"     : "(action) => { action.enabled = window.isScope('.view.text') ? window.activeView().isLoaded() : window.isScope('.text') }",
+    "script"    : "() => { window.activeText.saveAs() }"
+  },
+  "Text.SaveCopyAs" : {
+    "text"      : "Save &Copy As...",
+    "state"     : "(action) => { action.enabled = window.isScope('.view.text') ? window.activeView().isLoaded() : window.isScope('.text') }",
+    "script"    : "() => { window.activeText.saveCopyAs() }"
+  },
+  "Text.SaveSelectionAs" : {
+    "text"      : "Save Se&lection As...",
+    "script"    : "() => { window.activeText.saveSelectionAs() }"
+  },
+  "Text.ScrollLineDown" : {
+    "text"      : "Scroll Line &Down",
+    "script"    : "() => { window.activeText.scrollLineDown() }"
+  },
+  "Text.ScrollLineUp" : {
+    "text"      : "Scroll Line &Up",
+    "script"    : "() => { window.activeText.scrollLineUp() }"
+  },
+  "Text.SearchOnline" : {
+    "text"      : "() => { let searchEngines = application.searchEngines(); return searchEngines.length ? searchEngines : qsTr('[No search engine]') }",
+    "script"    : "(action) => { window.activeText.searchOnline(action.text) }"
+  },
+  "Text.SelectAll" : {
+    "text"      : "&All",
+    "script"    : "() => { window.activeText.selectAll() }"
+  },
+  "Text.SelectColumnToLineEnd" : {
+    "text"      : "&End Of Line",
+    "script"    : "() => { window.activeText.selectColumnTo('lineEnd') }"
+  },
+  "Text.SelectColumnToLineHome" : {
+    "text"      : "&Home Of Line",
+    "script"    : "() => { window.activeText.selectColumnTo('lineHome') }"
+  },
+  "Text.SelectColumnToLineStart" : {
+    "text"      : "&Start Of Line",
+    "script"    : "() => { window.activeText.selectColumnTo('lineStart') }"
+  },
+  "Text.SelectColumnToNextChar" : {
+    "text"      : "Next &Char",
+    "script"    : "(action, argument) => { window.activeText.selectColumnTo('char', Number(argument.count) || 1) }"
+  },
+  "Text.SelectColumnToNextLine" : {
+    "text"      : "Next &Line",
+    "script"    : "(action, argument) => { window.activeText.selectColumnTo('line', Number(argument.count) || 1) }"
+  },
+  "Text.SelectColumnToNextPage" : {
+    "text"      : "Next &Page",
+    "script"    : "(action, argument) => { window.activeText.selectColumnTo('page', Number(argument.count) || 1) }"
+  },
+  "Text.SelectColumnToNextParagraph" : {
+    "text"      : "Next &Paragraph",
+    "state"     : "(action) => { let text = window.activeText; action.enabled = text ? !text.isBinary() : false }",
+    "script"    : "(action, argument) => { window.activeText.selectColumnTo('paragraphColumn', Number(argument.count) || 1) }"
+  },
+  "Text.SelectColumnToNextStutteredPage" : {
+    "text"      : "Next &Page",
+    "script"    : "(action, argument) => { window.activeText.selectColumnTo('stutteredPage', Number(argument.count) || 1) }"
+  },
+  "Text.SelectColumnToPreviousChar" : {
+    "text"      : "Previous &Char",
+    "script"    : "(action, argument) => { window.activeText.selectColumnTo('char', -Number(argument.count) || -1) }"
+  },
+  "Text.SelectColumnToPreviousLine" : {
+    "text"      : "Previous &Line",
+    "script"    : "(action, argument) => { window.activeText.selectColumnTo('line', -Number(argument.count) || -1) }"
+  },
+  "Text.SelectColumnToPreviousPage" : {
+    "text"      : "Previous &Page",
+    "script"    : "(action, argument) => { window.activeText.selectColumnTo('page', -Number(argument.count) || -1) }"
+  },
+  "Text.SelectColumnToPreviousParagraph" : {
+    "text"      : "Previous &Paragraph",
+    "state"     : "(action) => { let text = window.activeText; action.enabled = text ? !text.isBinary() : false }",
+    "script"    : "(action, argument) => { window.activeText.selectColumnTo('paragraphColumn', -Number(argument.count) || -1) }"
+  },
+  "Text.SelectColumnToPreviousStutteredPage" : {
+    "text"      : "Previous &Page",
+    "script"    : "(action, argument) => { window.activeText.selectColumnTo('stutteredPage', -Number(argument.count) || -1) }"
+  },
+  "Text.SelectFold" : {
+    "text"      : "&Fold",
+    "state"     : "(action) => { let text = window.activeText; action.enabled = text ? !text.isBinary() : false }",
+    "script"    : "() => { window.activeText.selectFold() }"
+  },
+  "Text.SelectIndentation" : {
+    "text"      : "&Indentation",
+    "state"     : "(action) => { let text = window.activeText; action.enabled = text ? !text.isBinary() : false }",
+    "script"    : "() => { window.activeText.selectIndentation() }"
+  },
+  "Text.SelectLine" : {
+    "text"      : "&Line",
+    "script"    : "() => { window.activeText.selectLine() }"
+  },
+  "Text.SelectNextSnippetStop" : {
+    "text"      : "Select Snippet &Forward",
+    "script"    : "() => { window.activeText.selectSnippetStop(true) }"
+  },
+  "Text.SelectPair" : {
+    "text"      : "&Pair",
+    "state"     : "(action) => { let text = window.activeText; action.enabled = text ? !text.isBinary() : false }",
+    "script"    : "() => { window.activeText.selectPair() }"
+  },
+  "Text.SelectParagraph" : {
+    "text"      : "&Paragraph",
+    "state"     : "(action) => { let text = window.activeText; action.enabled = text ? !text.isBinary() : false }",
+    "script"    : "() => { window.activeText.selectParagraph() }"
+  },
+  "Text.SelectPreviousSnippetStop" : {
+    "text"      : "Select Snippet &Backward",
+    "script"    : "() => { window.activeText.selectSnippetStop(false) }"
+  },
+  "Text.SelectScope" : {
+    "text"      : "&Scope",
+    "script"    : "() => { window.activeText.selectScope() }"
+  },
+  "Text.SelectToDocumentEnd" : {
+    "text"      : "End Of &Document",
+    "script"    : "() => { window.activeText.selectTo('documentEnd') }"
+  },
+  "Text.SelectToDocumentStart" : {
+    "text"      : "Start Of &Document",
+    "script"    : "() => { window.activeText.selectTo('documentStart') }"
+  },
+  "Text.SelectToLineEnd" : {
+    "text"      : "End Of &Line",
+    "script"    : "() => { window.activeText.selectTo('lineEnd') }"
+  },
+  "Text.SelectToLineHome" : {
+    "text"      : "Home Of &Line",
+    "script"    : "() => { window.activeText.selectTo('lineHome') }"
+  },
+  "Text.SelectToLineStart" : {
+    "text"      : "Start Of &Line",
+    "script"    : "() => { window.activeText.selectTo('lineStart') }"
+  },
+  "Text.SelectToNextChar" : {
+    "text"      : "Next &Char",
+    "script"    : "(action, argument) => { window.activeText.selectTo('char', Number(argument.count) || 1) }"
+  },
+  "Text.SelectToNextFold" : {
+    "text"      : "Next &Fold",
+    "state"     : "(action) => { let text = window.activeText; action.enabled = text ? !text.isBinary() : false }",
+    "script"    : "(action, argument) => { window.activeText.selectTo('fold', Number(argument.count) || 1) }"
+  },
+  "Text.SelectToNextIndentation" : {
+    "text"      : "Next &Indentation",
+    "state"     : "(action) => { let text = window.activeText; action.enabled = text ? !text.isBinary() : false }",
+    "script"    : "(action, argument) => { window.activeText.selectTo('indentation', Number(argument.count) || 1) }"
+  },
+  "Text.SelectToNextLine" : {
+    "text"      : "Next &Line",
+    "script"    : "(action, argument) => { window.activeText.selectTo('line', Number(argument.count) || 1) }"
+  },
+  "Text.SelectToNextPage" : {
+    "text"      : "Next &Page",
+    "script"    : "(action, argument) => { window.activeText.selectTo('page', Number(argument.count) || 1) }"
+  },
+  "Text.SelectToNextPair" : {
+    "text"      : "Next &Pair",
+    "state"     : "(action) => { let text = window.activeText; action.enabled = text ? !text.isBinary() : false }",
+    "script"    : "(action, argument) => { window.activeText.selectTo('pair', Number(argument.count) || 1) }"
+  },
+  "Text.SelectToNextParagraph" : {
+    "text"      : "Next &Paragraph",
+    "state"     : "(action) => { let text = window.activeText; action.enabled = text ? !text.isBinary() : false }",
+    "script"    : "(action, argument) => { window.activeText.selectTo('paragraph', Number(argument.count) || 1) }"
+  },
+  "Text.SelectToNextScope" : {
+    "text"      : "Next &Scope",
+    "script"    : "(action, argument) => { window.activeText.selectTo('scope', Number(argument.count) || 1) }"
+  },
+  "Text.SelectToNextSegmentEnd" : {
+    "text"      : "Next Segment &End",
+    "state"     : "(action) => { let text = window.activeText; action.enabled = text ? !text.isBinary() : false }",
+    "script"    : "(action, argument) => { window.activeText.selectTo('segmentEnd', Number(argument.count) || 1) }"
+  },
+  "Text.SelectToNextSegmentStart" : {
+    "text"      : "Next Segment &Start",
+    "state"     : "(action) => { let text = window.activeText; action.enabled = text ? !text.isBinary() : false }",
+    "script"    : "(action, argument) => { window.activeText.selectTo('segmentStart', Number(argument.count) || 1) }"
+  },
+  "Text.SelectToNextStutteredPage" : {
+    "text"      : "Next &Stuttered Page",
+    "script"    : "(action, argument) => { window.activeText.selectTo('stutteredPage', Number(argument.count) || 1) }"
+  },
+  "Text.SelectToNextWordEnd" : {
+    "text"      : "Next Word &End",
+    "state"     : "(action) => { let text = window.activeText; action.enabled = text ? !text.isBinary() : false }",
+    "script"    : "(action, argument) => { window.activeText.selectTo('wordEnd', Number(argument.count) || 1) }"
+  },
+  "Text.SelectToNextWordPart" : {
+    "text"      : "Next Word &Part",
+    "state"     : "(action) => { let text = window.activeText; action.enabled = text ? !text.isBinary() : false }",
+    "script"    : "(action, argument) => { window.activeText.selectTo('wordPart', Number(argument.count) || 1) }"
+  },
+  "Text.SelectToNextWordStart" : {
+    "text"      : "Next &Word",
+    "state"     : "(action) => { let text = window.activeText; action.enabled = text ? !text.isBinary() : false }",
+    "script"    : "(action, argument) => { window.activeText.selectTo('wordStart', Number(argument.count) || 1) }"
+  },
+  "Text.SelectToPairEnd" : {
+    "text"      : "End Of &Pair",
+    "state"     : "(action) => { let text = window.activeText; action.enabled = text ? !text.isBinary() : false }",
+    "script"    : "() => { window.activeText.selectTo('pairEnd') }"
+  },
+  "Text.SelectToPairStart" : {
+    "text"      : "Start Of &Pair",
+    "state"     : "(action) => { let text = window.activeText; action.enabled = text ? !text.isBinary() : false }",
+     "script"    : "() => { window.activeText.selectTo('pairStart') }"
+  },
+  "Text.SelectToPreviousChar" : {
+    "text"      : "Previous &Char",
+    "script"    : "(action, argument) => { window.activeText.selectTo('char', -Number(argument.count) || -1) }"
+  },
+  "Text.SelectToPreviousFold" : {
+    "text"      : "Previous &Fold",
+    "state"     : "(action) => { let text = window.activeText; action.enabled = text ? !text.isBinary() : false }",
+    "script"    : "(action, argument) => { window.activeText.selectTo('fold', -Number(argument.count) || -1) }"
+  },
+  "Text.SelectToPreviousIndentation" : {
+    "text"      : "Previous &Indentation",
+    "state"     : "(action) => { let text = window.activeText; action.enabled = text ? !text.isBinary() : false }",
+    "script"    : "(action, argument) => { window.activeText.selectTo('indentation', -Number(argument.count) || -1) }"
+  },
+  "Text.SelectToPreviousLine" : {
+    "text"      : "Previous &Line",
+    "script"    : "(action, argument) => { window.activeText.selectTo('line', -Number(argument.count) || -1) }"
+  },
+  "Text.SelectToPreviousPage" : {
+    "text"      : "Previous &Page",
+    "script"    : "(action, argument) => { window.activeText.selectTo('page', -Number(argument.count) || -1) }"
+  },
+  "Text.SelectToPreviousPair" : {
+    "text"      : "Previous &Pair",
+    "state"     : "(action) => { let text = window.activeText; action.enabled = text ? !text.isBinary() : false }",
+    "script"    : "(action, argument) => { window.activeText.selectTo('pair', -Number(argument.count) || -1) }"
+  },
+  "Text.SelectToPreviousParagraph" : {
+    "text"      : "Previous &Paragraph",
+    "state"     : "(action) => { let text = window.activeText; action.enabled = text ? !text.isBinary() : false }",
+    "script"    : "(action, argument) => { window.activeText.selectTo('paragraph', -Number(argument.count) || -1) }"
+  },
+  "Text.SelectToPreviousScope" : {
+    "text"      : "Previous &Scope",
+    "script"    : "(action, argument) => { window.activeText.selectTo('scope', -Number(argument.count) || -1) }"
+  },
+  "Text.SelectToPreviousSegmentEnd" : {
+    "text"      : "Previous Segment &End",
+    "state"     : "(action) => { let text = window.activeText; action.enabled = text ? !text.isBinary() : false }",
+    "script"    : "(action, argument) => { window.activeText.selectTo('segmentEnd', -Number(argument.count) || -1) }"
+  },
+  "Text.SelectToPreviousSegmentStart" : {
+    "text"      : "Previous Segment &Start",
+    "state"     : "(action) => { let text = window.activeText; action.enabled = text ? !text.isBinary() : false }",
+    "script"    : "(action, argument) => { window.activeText.selectTo('segmentStart', -Number(argument.count) || -1) }"
+  },
+  "Text.SelectToPreviousStutteredPage" : {
+    "text"      : "Previous &Stuttered Page",
+    "script"    : "(action, argument) => { window.activeText.selectTo('stutteredPage', -Number(argument.count) || -1) }"
+  },
+  "Text.SelectToPreviousWordEnd" : {
+    "text"      : "Previous Word &End",
+    "state"     : "(action) => { let text = window.activeText; action.enabled = text ? !text.isBinary() : false }",
+    "script"    : "(action, argument) => { window.activeText.selectTo('wordEnd', -Number(argument.count) || -1) }"
+  },
+  "Text.SelectToPreviousWordPart" : {
+    "text"      : "Previous Word &Part",
+    "state"     : "(action) => { let text = window.activeText; action.enabled = text ? !text.isBinary() : false }",
+    "script"    : "(action, argument) => { window.activeText.selectTo('wordPart', -Number(argument.count) || -1) }"
+  },
+  "Text.SelectToPreviousWordStart" : {
+    "text"      : "Previous &Word",
+    "state"     : "(action) => { let text = window.activeText; action.enabled = text ? !text.isBinary() : false }",
+    "script"    : "(action, argument) => { window.activeText.selectTo('wordStart', -Number(argument.count) || -1) }"
+  },
+  "Text.SelectWord" : {
+    "text"      : "&Word",
+    "state"     : "(action) => { let text = window.activeText; action.enabled = text ? !text.isBinary() : false }",
+    "script"    : "() => { window.activeText.selectWord() }"
+  },
+  "Text.ShowWhiteSpaceAll" : {
+    "text"      : "Show &All",
+    "state"     : "(action) => { action.checked = action.checkable = (window.option('text.whiteSpaceVisibility') == King.Anywhere) }",
+    "script"    : "() => { window.setOption('text.whiteSpaceVisibility', King.Anywhere) }"
+  },
+  "Text.ShowWhiteSpaceInLineEnd" : {
+    "text"      : "Show In &Line End",
+    "state"     : "(action) => { action.checked = action.checkable = (window.option('text.whiteSpaceVisibility') == King.TrailingPosition) }",
+    "script"    : "() => { window.setOption('text.whiteSpaceVisibility', King.TrailingPosition) }"
+  },
+  "Text.ShowWhiteSpaceInLineStart" : {
+    "text"      : "Show In &Line Start",
+    "state"     : "(action) => { action.checked = action.checkable = (window.option('text.whiteSpaceVisibility') == King.LeadingPosition) }",
+    "script"    : "() => { window.setOption('text.whiteSpaceVisibility', King.LeadingPosition) }"
+  },
+  "Text.ShowWhiteSpaceInSelection" : {
+    "text"      : "Show In &Selection",
+    "state"     : "(action) => { action.checked = action.checkable = (window.option('text.whiteSpaceVisibility') == King.SelectedPosition) }",
+    "script"    : "() => { window.setOption('text.whiteSpaceVisibility', King.SelectedPosition) }"
+  },
+  "Text.ShuffleLines" : {
+    "text"      : "Sort Lines In &Random Order",
+    "kits"      : ["Editor"],
+    "script"    : "() => { window.activeText.shuffleLines() }"
+  },
+  "Text.SortLinesCaseInsensitive" : {
+    "text"      : "Sort Lines Case &Insensitive",
+    "kits"      : ["Editor"],
+    "script"    : "() => { window.activeText.sortLines(King.CaseInsensitive) }"
+  },
+  "Text.SortLinesCaseSensitive" : {
+    "text"      : "Sort Lines Case &Sensitive",
+    "kits"      : ["Editor"],
+    "script"    : "() => { window.activeText.sortLines(King.CaseSensitive) }"
+  },
+  "Text.SplitLines" : {
+    "text"      : "&Split Lines",
+    "kits"      : ["Editor"]
+  },
+  "Text.SplitSelection" : {
+    "text"      : "&Split Selection",
+    "script"    : "() => { window.activeText.splitSelection() }"
+  },
+  "Text.SwitchStreamColumn" : {
+    "text"      : "&Switch Stream And Column",
+    "script"    : "() => { window.activeText.switchStreamColumn() }"
+  },
+  "Text.Tabify" : {
+    "text"      : "&Tabify Selected Lines",
+    "kits"      : ["Editor"],
+    "script"    : "() => { window.activeText.tabify() }"
+  },
+  "Text.ToggleCaretLineHighlight" : {
+    "text"      : "Highlight Caret &Line",
+    "state"     : "(action) => { action.checked = action.checkable = window.option('text.highlightCaretLine') }",
+    "script"    : "() => { window.toggleOption('text.highlightCaretLine') }"
+  },
+  "Text.ToggleColumnEdit" : {
+    "text"      : "&Column Edit",
+    "icon"      : "king::columnEdit"
+  },
+  "Text.ToggleColumnMarker" : {
+    "text"      : "&Column Marker",
+    "state"     : "(action) => { action.checkable = true; action.checked = window.option('text.columnMarkerVisible') }",
+    "script"    : "() => { window.toggleOption('text.columnMarkerVisible') }"
+  },
+  "Text.ToggleFold" : {
+    "text"      : "&Toggle Fold",
+    "state"     : "(action) => { let text = window.activeText; action.enabled = text ? !text.isBinary() : false }",
+    "script"    : "() => {
+      let text = window.activeText;
+      let line = text.visibleLineFromPosition(text.selectionCaretP());
+
+      text.toggleFold(line);
+    }"
+  },
+  "Text.ToggleHexEdit" : {
+    "text"      : "&Hex Edit",
+    "state"     : "(action) => { let text = window.activeText; action.enabled = text ? !text.isBinary() : false; action.checked = action.checkable = text.isHexMode() }",
+    "script"    : "() => { window.activeText.setHexMode(!window.activeText.isHexMode()) }"    
+  },
+  "Text.ToggleIndentGuide" : {
+    "text"      : "&Indent Guides",
+    "icon"      : "king::indentGuide",
+    "state"     : "(action) => { action.checkable = true; action.checked = window.option('text.indentGuideVisible') }",
+    "script"    : "() => { window.toggleOption('text.indentGuideVisible') }"
+  },
+  "Text.ToggleLineEnding" : {
+    "text"      : "Line &Endings",
+    "icon"      : "king::lineEnding",
+    "state"     : "(action) => { action.checkable = true; action.checked = window.option('text.eolVisible') }",
+    "script"    : "() => { window.toggleOption('text.eolVisible') }"
+  },
+  "Text.ToggleMarginBlank" : {
+    "text"      : "Margin &Blank",
+    "state"     : "(action) => { action.checked = action.checkable = (window.option('text.hiddenMargins').indexOf('blank') == -1); }",
+    "script"    : "() => { window.toggleOption('text.hiddenMargins', 'blank') }"
+  },
+  "Text.ToggleMarginFold" : {
+    "text"      : "Margin &Fold",
+    "state"     : "(action) => { action.checked = action.checkable = (window.option('text.hiddenMargins').indexOf('fold') == -1); }",
+    "script"    : "() => { window.toggleOption('text.hiddenMargins', 'fold') }"
+  },
+  "Text.ToggleMarginNumber" : {
+    "text"      : "Margin &Number",
+    "state"     : "(action) => { action.checked = action.checkable = (window.option('text.hiddenMargins').indexOf('number') == -1); }",
+    "script"    : "() => { window.toggleOption('text.hiddenMargins', 'number') }"
+  },
+  "Text.ToggleMarginSymbol" : {
+    "text"      : "Margin &Symbol",
+    "state"     : "(action) => { action.checked = action.checkable = (window.option('text.hiddenMargins').indexOf('symbol') == -1); }",
+    "script"    : "() => { window.toggleOption('text.hiddenMargins', 'symbol') }"
+  },
+  "Text.ToggleMarginText" : {
+    "text"      : "Margin &Text",
+    "state"     : "(action) => { action.checked = action.checkable = (window.option('text.hiddenMargins').indexOf('text') == -1); }",
+    "script"    : "() => { window.toggleOption('text.hiddenMargins', 'text') }"
+  },
+  "Text.ToggleMarginTimestamp" : {
+    "text"      : "Margin &Timestamp",
+    "state"     : "(action) => { action.checked = action.checkable = (window.option('text.hiddenMargins').indexOf('timestamp') == -1); }",
+    "script"    : "() => { window.toggleOption('text.hiddenMargins', 'timestamp') }"
+  },
+  "Text.ToggleMultipleCaret" : {
+    "text"      : "&Multiple Caret",
+    "state"     : "(action) => { action.checked = action.checkable = window.option('text.multipleCaretEnabled') }",
+    "script"    : "() => { window.toggleOption('text.multipleCaretEnabled') }"
+  },
+  "Text.ToggleOvertype" : {
+    "text"      : "&Overtype",
+    "state"     : "(action) => { let text = window.activeText; action.enabled = text ? !text.isReadOnly() : false; action.checked = action.checkable = text ? text.isOvertypeEnabled() : false }",
+    "script"    : "() => { window.activeText.setOvertypeEnabled(!window.activeText.isOvertypeEnabled()) }"
+  },
+  "Text.ToggleReadOnly" : {
+    "text"      : "&Read Only"
+  },
+  "Text.ToggleSyncEdit" : {
+    "text"      : "&Sync Edit",
+    "icon"      : "king::syncEdit",
+    "kits"      : ["Editor"]
+  },
+  "Text.ToggleVirtualSpace" : {
+    "text"      : "&Virtual Space",
+    "icon"      : "king::virtualSpace",
+    "state"     : "(action) => { let text = window.activeText; action.enabled = text ? !text.isBinary() : false; action.checkable = true; action.checked = window.option('text.virtualSpaceEnabled') }",
+    "kits"      : ["Editor"],
+    "script"    : "() => { window.toggleOption('text.virtualSpaceEnabled') }"
+  },
+  "Text.ToggleWordWrap" : {
+    "text"      : "&Word Wrap",
+    "icon"      : "king::wordWrap",
+    "state"     : "(action) => { let text = window.activeText; action.enabled = text ? !text.isBinary() : false; action.checkable = true; action.checked = (window.option('text.wrapMode') != King.NoWrap) }",
+    "script"    : "() => {
+      let wrapMode = window.option('text.wrapMode');
+      let kitWrapMode = (window.activeKit.name() == 'Terminal') ? King.CharWrap : King.WordWrap;
+      window.setOption('text.wrapMode', (wrapMode == King.NoWrap) ? kitWrapMode : King.NoWrap);
+    }"
+  },
+  "Text.ToggleWrapSymbol" : {
+    "text"      : "&Wrap Symbols",
+    "icon"      : "king::wrapSymbol",
+    "state"     : "(action) => { action.checkable = true; action.checked = window.option('text.wrapSymbolVisible') }",
+    "script"    : "() => { window.toggleOption('text.wrapSymbolVisible') }"
+  },
+  "Text.TransposeNextChar" : {
+    "text"      : "Next &Char",
+    "kits"      : ["Editor"],
+    "script"    : "(action, argument) => { window.activeText.transposeChar(Number(argument.span) || 1) }"
+  },
+  "Text.TransposeNextLine" : {
+    "text"      : "Next &Line",
+    "kits"      : ["Editor"],
+    "script"    : "(action, argument) => { window.activeText.transposeLine(Number(argument.span) || 1) }"
+  },
+  "Text.TransposeNextWord" : {
+    "text"      : "Next &Word",
+    "kits"      : ["Editor"],
+    "script"    : "(action, argument) => { window.activeText.transposeWord(Number(argument.span) || 1) }"
+  },
+  "Text.TransposePreviousChar" : {
+    "text"      : "Previous &Char",
+    "kits"      : ["Editor"],
+    "script"    : "(action, argument) => { window.activeText.transposeChar(-Number(argument.span) || -1) }"
+  },
+  "Text.TransposePreviousLine" : {
+    "text"      : "Previous &Line",
+    "kits"      : ["Editor"],
+    "script"    : "(action, argument) => { window.activeText.transposeLine(-Number(argument.span) || -1) }"
+  },
+  "Text.TransposePreviousWord" : {
+    "text"      : "Previous &Word",
+    "kits"      : ["Editor"],
+    "script"    : "(action, argument) => { window.activeText.transposeWord(-Number(argument.span) || -1) }"
+  },
+  "Text.TrimBlanks" : {
+    "text"      : "Leading And Trailing &Blanks",
+    "kits"      : ["Editor"],
+    "script"    : "() => { window.activeText.trim() }"
+  },
+  "Text.TrimLeadingBlanks" : {
+    "text"      : "&Leading Blanks",
+    "kits"      : ["Editor"],
+    "script"    : "() => { window.activeText.trimLeading() }"
+  },
+  "Text.TrimTrailingBlanks" : {
+    "text"      : "&Trailing Blanks",
+    "kits"      : ["Editor"],
+    "script"    : "() => { window.activeText.trimTrailing() }"
+  },
+  "Text.Uncomment" : {
+    "text"      : "&Uncomment Selection",
+    "icon"      : "king::uncomment",
+    "kits"      : ["Editor"],
+    "script"    : "() => { window.activeText.uncomment() }"
+  },
+  "Text.Undo" : {
+    "text"      : "&Undo",
+    "icon"      : "king::undo",
+    "kits"      : ["Editor"],
+    "state"     : "(action) => { let text = window.activeText; action.enabled = text ? text.canUndo() : false }",
+    "script"    : "() => { window.activeText.undo() }"
+  },
+  "Text.Unfold" : {
+    "text"      : "&Unfold",
+    "state"     : "(action) => { let text = window.activeText; action.enabled = text ? !text.isBinary() : false }",
+    "script"    : "() => {
+      let text = window.activeText;
+      let line = text.visibleLineFromPosition(text.selectionCaretP());
+
+      text.unfold(line, false);
+    }"
+  },
+  "Text.UnfoldAll" : {
+    "text"      : "Unfold &All",
+    "state"     : "(action) => { let text = window.activeText; action.enabled = text ? !text.isBinary() : false }",
+    "script"    : "() => { let text = window.activeText; text.unfold(0, text.length) }"
+  },
+  "Text.UnfoldCategory" : {
+    "text"      : "Unfold &Category",
+    "state"     : "(action) => { let text = window.activeText; action.enabled = text ? !text.isBinary() : false }"
+  },
+  "Text.UnfoldInside" : {
+    "text"      : "Unfold &Inside",
+    "state"     : "(action) => { let text = window.activeText; action.enabled = text ? !text.isBinary() : false }",
+    "script"    : "() => {
+      let text = window.activeText;
+      let line = text.visibleLineFromPosition(text.selectionCaretP());
+
+      text.unfold(line, true);
+    }"
+  },
+  "Text.UnifyEolToCR" : {
+    "text"      : "To &MacOS 9 CR",
+    "state"     : "(action) => { let text = window.activeText; action.enabled = text ? !text.isReadOnly() : false; action.checked = action.checkable = text ? (text.eol() == King.CR) : false }",
+    "script"    : "() => { window.activeText.unifyEol(King.CR) }"
+  },
+  "Text.UnifyEolToLF" : {
+    "text"      : "To &Unix LF",
+    "state"     : "(action) => { let text = window.activeText; action.enabled = text ? !text.isReadOnly() : false; action.checked = action.checkable = text ? (text.eol() == King.LF) : false }",
+    "script"    : "() => { window.activeText.unifyEol(King.LF) }"
+  },
+  "Text.UnifyEolToCRLF" : {
+    "text"      : "To &Windows CRLF",
+    "state"     : "(action) => { let text = window.activeText; action.enabled = text ? !text.isReadOnly() : false; action.checked = action.checkable = text ? (text.eol() == King.CRLF) : false }",
+    "script"    : "() => { window.activeText.unifyEol(King.CRLF) }"
+  },
+  "Text.Untabify" : {
+    "text"      : "&Untabify Selected Lines",
+    "kits"      : ["Editor"],
+    "script"    : "() => { window.activeText.untabify() }"
+  },
+  "Text.ZoomIn" : {
+    "text"      : "Zoom &In",
+    "icon"      : "king::zoomIn",
+    "script"    : "() => { window.activeText.zoomIn() }"
+  },
+  "Text.ZoomOut" : {
+    "text"      : "Zoom &Out",
+    "icon"      : "king::zoomOut",
+    "script"    : "() => { window.activeText.zoomOut() }"
+  },
+  "Tmux.AttachSession" : {
+    "text"      : "() => {
+      let tmuxSessionNames = window.activeMuxDesktop ? window.activeMuxDesktop.tmuxSessionNames : [];
+      return tmuxSessionNames.length ? tmuxSessionNames : qsTr('[Session list is empty]');
+    }",
+    "state"     : "(action) => {
+      action.enabled = window.activeMuxDesktop != null;
+      action.checked = action.checkable = (window.activeMuxDesktop && window.activeMuxDesktop.currentTmuxSessionName == action.text);
+    }",
+    "script"    : "(action) => { window.activeMuxDesktop.attachTmuxSession(action.text) }"
+  },
+  "Tmux.DetachClient" : {
+    "text"      : "&Detach Client",
+    "state"     : "(action) => { action.enabled = window.activeMuxDesktop != null }",
+    "script"    : "(action) => { window.activeMuxDesktop.detachTmuxClient() }"
+  },
+  "Tmux.ExecuteTmuxCommand" : {
+    "text"      : "&Execute Tmux Command",
+    "state"     : "(action) => { action.enabled = window.activeMuxDesktop != null }",
+    "script"    : "(action) => { window.activeMuxDesktop.executeTmuxCommand() }"
+  },
+  "Tmux.KillSession" : {
+    "text"      : "() => {
+      let tmuxSessionNames = window.activeMuxDesktop ? window.activeMuxDesktop.tmuxSessionNames : [];
+      return tmuxSessionNames.length ? tmuxSessionNames : qsTr('[Session list is empty]');
+    }",
+    "state"     : "(action) => {
+      action.enabled = window.activeMuxDesktop != null;
+      action.checked = action.checkable = (window.activeMuxDesktop && window.activeMuxDesktop.currentTmuxSessionName == action.text);
+    }",
+    "script"    : "(action) => { window.activeMuxDesktop.killTmuxSession(action.text) }"
+  },
+  "Tmux.SelectLayout" : {
+    "text"      : "() => {
+      return ['Even horizontal', 'Even vertical', 'Main horizontal', 'Main horizontal mirrored', 'Main vertical', 'Main vertical mirrored', 'Tiled'];
+    }",
+    "state"     : "(action) => { action.enabled = window.activeMuxDesktop != null; }",
+    "script"    : "(action) => { window.activeMuxDesktop.selectTmuxLayout(action.text) }"
+  },
+  "Tmux.RenameSession" : {
+    "text"      : "Rename &Session",
+    "state"     : "(action) => { action.enabled = window.activeMuxDesktop != null; }",
+    "script"    : "(action) => { window.activeMuxDesktop.renameTmuxSession() }"
+  },
+  "Tmux.SynchronizePanes" : {
+    "text"      : "() => { return ['On', 'Off']; }",
+    "state"     : "(action) => { action.enabled = window.activeMuxDesktop != null; }",
+    "script"    : "(action) => { window.activeMuxDesktop.synchronizeTmuxPanes(action.text == 'On' ? true : false) }"
+  },
+  "Tool.BuildScheme" : {
+    "text"      : "&Build",
+    "kits"      : ["Editor"],
+    "state"     : "(action) => { let scheme = window.activeView().scheme(); let tools = window.activeKit.tools('Build', scheme); action.enabled = (tools.length > 0) }",
+    "script"    : "() => { let scheme = window.activeView().scheme(); window.activeKit.startTool('Build', scheme) }"
+  },
+  "Tool.CancelBuildScheme" : {
+    "text"      : "&Cancel Build",
+    "kits"      : ["Editor"],
+    "state"     : "(action) => { let scheme = window.activeView().scheme(); let pid = window.activeKit.processId('Build - ' + scheme); action.enabled = (pid != 0) }",
+    "script"    : "() => { let scheme = window.activeView().scheme(); window.activeKit.stopTool('Build - ' + scheme) }"
+  },
+  "Tool.ExternalToolList" : {
+    "text"      : "() => { let tools = window.activeKit.tools(); return tools.length ? tools : qsTr('[Empty]') }",
+    "state"     : "(action) => { let tools = window.activeKit.tools(); action.visible = (tools.length > 0) }",
+    "script"    : "(action) => { window.activeKit.startTool(action.text) }"
+  },
+  "Tool.ManageExternalTools" : {
+    "text"      : "&External Tools..."
+  },
+  "Tool.ManageSchemeTools" : {
+    "text"      : "${Scheme} &Tools..."
+  },
+  "Tool.RunToolDialog" : {
+    "text"      : "&Run Tool...",
+    "script"    : "() => { window.activeKit.runToolDialog() }"
+  },
+  "Tool.SchemeToolList" : {
+    "text"      : "() => { let scheme = window.activeView().scheme(); let tools = window.activeKit.tools('', scheme); return tools.length ? tools : qsTr('[Empty]') }",
+    "state"     : "(action) => { let scheme = window.activeView().scheme(); let tools = window.activeKit.tools('', scheme); action.visible = (tools.length > 0) }",
+    "script"    : "(action) => { let scheme = window.activeView().scheme(); window.activeKit.startTool(action.text, scheme) }"
+  },
+  "Tool.StopToolDialog" : {
+    "text"      : "Stop Tools...",
+    "state"     : "(action) => { let tools = window.activeKit.runningTools(); action.enabled = (tools.length > 0) }",
+    "script"    : "() => { window.activeKit.stopTool() }"
+  },
+  "TransferPane.OpenTargetDirectory" : {
+    "text"      : "&Open target directory",
+    "state"     : "(action) => { let transfer = window.activeKit.pane('TransferPane'); action.enabled = transfer ? transfer.canOpenTargetDirectory() : false }",
+    "script"    : "() => { let transfer = window.activeKit.pane('TransferPane'); transfer.openTargetDirectory() }"
+  },
+  "TransferPane.Pause" : {
+    "text"      : "() => { let transfer = window.activeKit.pane('TransferPane'); return transfer && transfer.isPaused() ? qsTr('&Resume') : qsTr('&Pause') }",
+    "script"    : "() => { let transfer = window.activeKit.pane('TransferPane'); transfer.isPaused() ? transfer.resume() : transfer.pause() }"
+  },
+  "TransferPane.Remove" : {
+    "text"      : "&Remove",
+    "script"    : "() => { let transfer = window.activeKit.pane('TransferPane'); transfer.remove() }"
+  },
+  "Window.ActivateEditor" : {
+    "text"      : "&Editor",
+    "icon"      : "king::editor",
+    "state"     : "(action) => { action.checked = action.checkable = (window.activeKit.name() == 'Editor') }",
+    "script"    : "() => { window.setActiveKit('Editor') }"
+  },
+  "Window.ActivateNextView" : {
+    "text"      : "Activate &Next View",
+    "script"    : "() => { window.activeKit.activateNextView() }"
+  },
+  "Window.ActivatePreviousView" : {
+    "text"      : "Activate &Previous View",
+    "script"    : "() => { window.activeKit.activatePreviousView() }"
+  },
+  "Window.ActivateTerminal" : {
+    "text"      : "&Terminal",
+    "icon"      : "king::terminal",
+    "state"     : "(action) => { action.checked = action.checkable = (window.activeKit.name() == 'Terminal') }",
+    "script"    : "() => { window.setActiveKit('Terminal') }"
+  },
+  "Window.ClearRecentUrls" : {
+    "text"      : "&Clear Recent Urls",
+    "state"     : "(action) => { action.visible = (window.activeKit.recentUrls().length > 0) }",
+    "script"    : "() => { window.activeKit.clearRecentUrls() }"
+  },
+  "Window.Close" : {
+    "text"      : "Close &Window",
+    "script"    : "() => { window.close() }"
+  },
+  "Window.CloseActiveDock" : {
+    "text"      : "Close Dock",
+    "script"    : "() => { window.activeDock.close() }"
+  },
+  "Window.CloseActiveGroup" : {
+    "text"      : "Close Group",
+    "state"     : "(action) => { action.enabled = window.activeKit.canCloseGroup() }",
+    "script"    : "() => { window.activeKit.closeGroup() }"
+  },
+  "Window.CloseActiveView" : {
+    "text"      : "&Close View",
+    "script"    : "() => { window.activeKit.closeView() }"
+  },
+  "Window.CloseAllViews" : {
+    "text"      : "Close &All Views",
+    "script"    : "() => { window.activeKit.closeAllViews() }"
+  },
+  "Window.CloseAllViewsButActive" : {
+    "text"      : "Close All Views But &Active",
+    "script"    : "() => { window.activeKit.closeAllViewsButActive() }"
+  },
+  "Window.CloseRightViews" : {
+    "text"      : "Close All Views To The &Right",
+    "script"    : "() => { window.activeKit.closeRightViews() }"
+  },
+  "Window.DuplicateView" : {
+    "text"      : "&Duplicate View",
+    "state"     : "(action) => { action.enabled = window.activeView() ? true : false }",
+    "script"    : "() => { window.activeKit.cloneView(window.activeView(), true) }"
+  },
+  "Window.Favorites" : {
+    "text"      : "&Favorites"
+  },
+  "Window.GotoAddressBar" : {
+    "text"      : "Goto &Address Bar",
+    "script"    : "() => { window.activeKit.gotoAddressBar() }"
+  },
+  "Window.GotoFile" : {
+    "text"      : "Goto &File...",
+    "script"    : "() => { window.openCommandPalette('e') }"
+  },
+  "Window.GotoLine" : {
+    "text"      : "Goto &Position...",
+    "state"     : "(action) => { action.enabled = window.activeText ? true : false }",
+    "script"    : "() => { window.openCommandPalette(':') }"
+  },
+  "Window.GotoSession" : {
+    "text"      : "Goto &Session...",
+    "script"    : "() => { window.openCommandPalette('t') }"
+  },
+  "Window.GotoSymbol" : {
+    "text"      : "Goto &Symbol...",
+    "state"     : "(action) => { action.enabled = window.activeText ? true : false }",
+    "script"    : "() => { window.openCommandPalette('@') }"
+  },
+  "Window.KitMore" : {
+    "text"      : "Show &More Tools",
+    "icon"      : "king::more",
+    "state"     : "(action) => { action.checkable = true; }"
+  },
+  "Window.LockScreen" : {
+    "text"      : "&Lock Screen",
+    "icon"      : "king::lockScreen",
+    "script"    : "() => { window.lockScreen() }"
+  },
+  "Window.MoveGroupToGroup" : {
+    "text"      : "() => { let allGroupNames = window.activeKit.allGroupNames(); return allGroupNames.length ? allGroupNames : qsTr('[Group list is empty]') }",
+    "state"     : "(action) => { action.checked = action.checkable = (window.activeGroup.name() == action.text) }",
+    "script"    : "(action) => { window.activeKit.moveGroupToGroup(action.text) }"
+  },
+  "Window.MoveViewToGroup" : {
+    "text"      : "() => { let allGroupNames = window.activeKit.allGroupNames(); return allGroupNames.length ? allGroupNames : qsTr('[Group list is empty]') }",
+    "state"     : "(action) => { action.checked = action.checkable = (window.activeView().groupName() == action.text) }",
+    "script"    : "(action) => { window.activeKit.moveViewToGroup(action.text) }"
+  },
+  "Window.NavigationList" : {
+    "text"      : "[Navigation list is empty]"
+  },
+  "Window.OpenFocusModeSettings" : {
+    "text"      : "Focus Mode &Settings...",
+    "script"    : "(action) => { window.openFocusModeDialog() }"
+  },
+  "Window.OpenSettings" : {
+    "text"      : "&Settings...",
+    "icon"      : "king::options",
+    "script"    : "(action) => { window.activeKit.openSettings() }"
+  },
+  "Window.Properties" : {
+    "text"      : "Proper&ties..."
+  },
+  "Window.RecentUrls" : {
+    "text"      : "() => { let urls = window.activeKit.recentUrls(); return urls.length ? urls : qsTr('[Recent urls is empty]'); }",
+    "state"     : "(action) => { action.enabled = (window.activeKit.recentUrls().length > 0) }",
+    "script"    : "(action) => { window.activeKit.reopen(action.text) }"
+  },
+  "Window.RenameView" : {
+    "text"      : "&Rename View",
+    "script"    : "() => { window.activeKit.renameView(window.activeView()) }"
+  },
+  "Window.ReopenClosedView" : {
+    "text"      : "&Reopen Closed View",
+    "state"     : "(action) => { action.visible = (window.activeKit.recentUrls().length > 0) }",
+    "script"    : "(action) => { window.activeKit.reopen() }"
+  },
+  "Window.RepeatLastCommand" : {
+    "text"      : "&Repeat Last Command"
+  },
+  "Window.SetCommandMode" : {
+    "text"      : "&Command Mode",
+    "state"     : "(action) => { action.checked = action.checkable = (window.activeText.keyMode == King.CommandMode) }",
+    "script"    : "(action) => { window.activeText.keyMode = King.CommandMode }"
+  },
+  "Window.SetLocalMode" : {
+    "text"      : "&Local Mode",
+    "state"     : "(action) => { action.checked = action.checkable = (window.activeText.keyMode == King.LocalMode) }",
+    "script"    : "(action) => { window.activeText.keyMode = King.LocalMode }"
+  },
+  "Window.SetNormalMode" : {
+    "text"      : "&Normal Mode",
+    "state"     : "(action) => { action.checked = action.checkable = (window.activeText.keyMode == King.NormalMode) }",
+    "script"    : "(action) => { window.activeText.keyMode = King.NormalMode }"
+  },
+  "Window.SetRemoteMode" : {
+    "text"      : "&Remote Mode",
+    "state"     : "(action) => { action.checked = action.checkable = (window.activeText.keyMode == King.RemoteMode) }",
+    "script"    : "(action) => { window.activeText.keyMode = King.RemoteMode }"
+  },
+  "Window.SetTabColor" : {
+    "text"      : "&Color...",
+    "script"    : "() => { window.activeKit.setTabColor(window.activeView()) }"
+  },
+  "Window.SetTabColorEmpty" : {
+    "text"      : "&Empty",
+    "icon"      : "king::colorTransparent",
+    "script"    : "() => { window.activeKit.setTabColor(window.activeView(), '#00000000') }"
+  },
+  "Window.SetTabColorDarkCyan" : {
+    "text"      : "&Dark Cyan",
+    "icon"      : "king::colorDarkCyan",
+    "script"    : "() => { window.activeKit.setTabColor(window.activeView(), '#80008B8B') }"
+  },
+  "Window.SetTabColorDeepPink" : {
+    "text"      : "&Deep Pink",
+    "icon"      : "king::colorDeepPink",
+    "script"    : "() => { window.activeKit.setTabColor(window.activeView(), '#80FF1493') }"
+  },
+  "Window.SetTabColorForestGreen" : {
+    "text"      : "&Forest Green",
+    "icon"      : "king::colorForestGreen",
+    "script"    : "() => { window.activeKit.setTabColor(window.activeView(), '#80228B22') }"
+  },
+  "Window.SetTabColorGoldenrod" : {
+    "text"      : "&Goldenrod",
+    "icon"      : "king::colorGoldenrod",
+    "script"    : "() => { window.activeKit.setTabColor(window.activeView(), '#80DAA520') }"
+  },
+  "Window.SetTabColorIndianRed" : {
+    "text"      : "&Indian Red",
+    "icon"      : "king::colorIndianRed",
+    "script"    : "() => { window.activeKit.setTabColor(window.activeView(), '#80CD5C5C') }"
+  },
+  "Window.SetTabColorMediumOrchid" : {
+    "text"      : "&Medium Orchid",
+    "icon"      : "king::colorMediumOrchid",
+    "script"    : "() => { window.activeKit.setTabColor(window.activeView(), '#80BA55D3') }"
+  },
+  "Window.SetTabColorMediumSlateBlue" : {
+    "text"      : "&Medium Slate Blue",
+    "icon"      : "king::colorMediumSlateBlue",
+    "script"    : "() => { window.activeKit.setTabColor(window.activeView(), '#807B68EE') }"
+  },
+  "Window.SetTabColorOlive" : {
+    "text"      : "&Olive",
+    "icon"      : "king::colorOlive",
+    "script"    : "() => { window.activeKit.setTabColor(window.activeView(), '#80808000') }"
+  },
+  "Window.SetTabColorRed" : {
+    "text"      : "&Red",
+    "icon"      : "king::colorRed",
+    "script"    : "() => { window.activeKit.setTabColor(window.activeView(), '#80FF0000') }"
+  },
+  "Window.SetTabColorRoyalBlue" : {
+    "text"      : "&Royal Blue",
+    "icon"      : "king::colorRoyalBlue",
+    "script"    : "() => { window.activeKit.setTabColor(window.activeView(), '#804169E1') }"
+  },
+  "Window.SetTabColorSteelBlue" : {
+    "text"      : "&Steel Blue",
+    "icon"      : "king::colorSteelBlue",
+    "script"    : "() => { window.activeKit.setTabColor(window.activeView(), '#804682B4') }"
+  },
+  "Window.SetTabColorTeal" : {
+    "text"      : "&Teal",
+    "icon"      : "king::colorTeal",
+    "script"    : "() => { window.activeKit.setTabColor(window.activeView(), '#80008080') }"
+  },
+  "Window.ShowPaletteAnything" : {
+    "text"      : "&Anything Palette...",
+    "icon"      : "king::anythingPalette",
+    "script"    : "() => { window.openCommandPalette() }"
+  },
+  "Window.ShowPaletteCommand" : {
+    "text"      : "&Command Palette...",
+    "script"    : "() => { window.openCommandPalette('>') }"
+  },
+  "Window.ShowPaletteMultiplexer" : {
+    "text"      : "&Mux/Tmux Palette...",
+    "script"    : "() => { window.openCommandPalette('m') }"
+  },
+  "Window.ShowPaneExplorer" : {
+    "text"      : "&Explorer",
+    "icon"      : "king::explorerPane",
+    "script"    : "() => { window.activeKit.showPane('ExplorerPane') }"
+  },
+  "Window.ShowPaneFiler" : {
+    "text"      : "&Filer",
+    "icon"      : "king::filerPane",
+    "script"    : "() => { window.activeKit.showPane('FilerPane') }"
+  },
+  "Window.ShowPaneOutline" : {
+    "text"      : "&Outline",
+    "icon"      : "king::outlinePane",
+    "script"    : "() => { window.activeKit.showPane('OutlinePane') }"
+  },
+  "Window.ShowPaneOutput" : {
+    "text"      : "&Output",
+    "icon"      : "king::outputPane",
+    "script"    : "() => { window.activeKit.showPane('OutputPane') }"
+  },
+  "Window.ShowPaneProject" : {
+    "text"      : "&Project",
+    "icon"      : "king::projectPane",
+    "script"    : "() => { window.activeKit.showPane('ProjectPane') }"
+  },
+  "Window.ShowPaneSender" : {
+    "text"      : "&Sender",
+    "icon"      : "king::senderPane",
+    "script"    : "() => { window.activeKit.showPane('SenderPane') }"
+  },
+  "Window.ShowPaneSession" : {
+    "text"      : "&Session",
+    "icon"      : "king::sessionPane",
+    "script"    : "() => { window.activeKit.showPane('SessionPane') }"
+  },
+  "Window.ShowPaneShell" : {
+    "text"      : "&Shell",
+    "icon"      : "king::shellPane",
+    "script"    : "() => { window.activeKit.showPane('ShellPane') }"
+  },
+  "Window.ShowPaneTransfer" : {
+    "text"      : "&Transfer",
+    "icon"      : "king::transferPane",
+    "script"    : "() => { window.activeKit.showPane('TransferPane') }"
+  },
+  "Window.SplitDock" : {
+    "text"      : "&Split",
+    "icon"      : "king::split",
+    "state"     : "(action) => { action.enabled = window.activeDock ? window.activeDock.splittable : false }",
+    "script"    : "() => { window.activeDock.split() }"
+  },
+  "Window.SplitGroupHorizontally" : {
+    "text"      : "Split Group &Horizontally",
+    "icon"      : "king::splitHorizontally",
+    "state"     : "(action) => { action.enabled = window.activeGroup ? true : false }",
+    "script"    : "() => { window.activeKit.splitGroup(King.Right) }"
+  },
+  "Window.SplitGroupVertically" : {
+    "text"      : "Split Group &Vertically",
+    "icon"      : "king::splitVertically",
+    "state"     : "(action) => { action.enabled = window.activeGroup ? true : false }",
+    "script"    : "() => { window.activeKit.splitGroup(King.Bottom) }"
+  },
+  "Window.SplitViewHorizontally" : {
+    "text"      : "Split View &Horizontally",
+    "icon"      : "king::splitHorizontally",
+    "state"     : "(action) => { action.enabled = window.activeView() ? true : false }",
+    "script"    : "() => { window.activeKit.splitView(King.Right) }"
+  },
+  "Window.SplitViewToBottomGroup" : {
+    "text"      : "&Bottom Group",
+    "state"     : "(action) => { action.enabled = window.activeGroup.viewCount() > 1 }",
+    "script"    : "(action) => { window.activeKit.splitViewToGroup(King.Bottom) }"
+  },
+  "Window.SplitViewToLeftGroup" : {
+    "text"      : "&Left Group",
+    "state"     : "(action) => { action.enabled = window.activeGroup.viewCount() > 1 }",
+    "script"    : "(action) => { window.activeKit.splitViewToGroup(King.Left) }"
+  },
+  "Window.SplitViewToRightGroup" : {
+    "text"      : "&Right Group",
+    "state"     : "(action) => { action.enabled = window.activeGroup.viewCount() > 1 }",
+    "script"    : "(action) => { window.activeKit.splitViewToGroup(King.Right) }"
+  },
+  "Window.SplitViewToTopGroup" : {
+    "text"      : "&Top Group",
+    "state"     : "(action) => { action.enabled = window.activeGroup.viewCount() > 1 }",
+    "script"    : "(action) => { window.activeKit.splitViewToGroup(King.Top) }"
+  },
+  "Window.SplitViewVertically" : {
+    "text"      : "Split View &Vertically",
+    "icon"      : "king::splitVertically",
+    "state"     : "(action) => { action.enabled = window.activeView() ? true : false }",
+    "script"    : "() => { window.activeKit.splitView(King.Bottom) }"
+  },
+  "Window.ToggleAlwaysOnTop" : {
+    "text"      : "&Always On Top",
+    "state"     : "(action) => { action.checked = action.checkable = window.alwaysOnTop }",
+    "script"    : "() => { window.alwaysOnTop = !window.alwaysOnTop }"
+  },
+  "Window.ToggleBottomDockArea" : {
+    "text"      : "&Bottom Docks",
+    "state"     : "(action) => { action.checked = action.checkable = window.activeKit.isDockAreaVisible(King.BottomDockArea) }",
+    "script"    : "() => { window.activeKit.toggleDockArea(King.BottomDockArea) }"
+  },
+  "Window.ToggleDebugMode" : {
+    "text"      : "&Debug Mode",
+    "state"     : "(action) => { action.checked = action.checkable = terminal.activeView().debugMode }",
+    "script"    : "(action) => { terminal.activeView().debugMode = !terminal.activeView().debugMode }"
+  },
+  "Window.ToggleDockFloating" : {
+    "text"      : "&Float",
+    "icon"      : "king::float",
+    "state"     : "(action) => { action.checked = action.checkable = window.activeDock ? window.activeDock.floating : false }",
+    "script"    : "() => { let dock = window.activeDock; dock.floating = !dock.floating }"
+  },
+  "Window.ToggleFocusMode" : {
+    "text"      : "&Focus Mode",
+    "icon"      : "king::focusMode",
+    "state"     : "(action) => { action.checked = action.checkable = window.focusMode }",
+    "script"    : "() => { window.focusMode = !window.focusMode }"
+  },
+  "Window.ToggleFullScreen" : {
+    "text"      : "&Full Screen",
+    "icon"      : "king::fullScreen",
+    "state"     : "(action) => { action.checked = action.checkable = window.fullScreen }",
+    "script"    : "() => { window.fullScreen = !window.fullScreen }"
+  },
+  "Window.ToggleLeftDockArea" : {
+    "text"      : "&Left Docks",
+    "state"     : "(action) => { action.checked = action.checkable = window.activeKit.isDockAreaVisible(King.LeftDockArea) }",
+    "script"    : "() => { window.activeKit.toggleDockArea(King.LeftDockArea) }"
+  },
+  "Window.ToggleMenuBar" : {
+    "text"      : "&Menu Bar",
+    "state"     : "(action) => { action.checked = action.checkable = window.activeKit.isHidden('MenuBar') ? false : true }",
+    "script"    : "() => { window.activeKit.toggleBar('MenuBar') }"
+  },
+  "Window.TogglePaneExplorer" : {
+    "text"      : "&Explorer",
+    "icon"      : "king::explorerPane",
+    "state"     : "(action) => { action.checked = action.checkable = window.activeKit.isPaneHidden('ExplorerPane') ? false : true }",
+    "script"    : "() => { window.activeKit.togglePane('ExplorerPane') }"
+  },
+  "Window.TogglePaneFiler" : {
+    "text"      : "&Filer",
+    "icon"      : "king::filerPane",
+    "state"     : "(action) => { action.checked = action.checkable = window.activeKit.isPaneHidden('FilerPane') ? false : true }",
+    "script"    : "() => { window.activeKit.togglePane('FilerPane') }"
+  },
+  "Window.TogglePaneOutline" : {
+    "text"      : "&Outline",
+    "icon"      : "king::outlinePane",
+    "state"     : "(action) => { action.checked = action.checkable = window.activeKit.isPaneHidden('OutlinePane') ? false : true }",
+    "script"    : "() => { window.activeKit.togglePane('OutlinePane') }"
+  },
+  "Window.TogglePaneOutput" : {
+    "text"      : "&Output",
+    "icon"      : "king::outputPane",
+    "state"     : "(action) => { action.checked = action.checkable = window.activeKit.isPaneHidden('OutputPane') ? false : true }",
+    "script"    : "() => { window.activeKit.togglePane('OutputPane') }"
+  },
+  "Window.TogglePaneProject" : {
+    "text"      : "&Project",
+    "icon"      : "king::projectPane",
+    "state"     : "(action) => { action.checked = action.checkable = window.activeKit.isPaneHidden('ProjectPane') ? false : true }",
+    "script"    : "() => { window.activeKit.togglePane('ProjectPane') }"
+  },
+  "Window.TogglePaneSender" : {
+    "text"      : "&Sender",
+    "icon"      : "king::senderPane",
+    "state"     : "(action) => { action.checked = action.checkable = window.activeKit.isPaneHidden('SenderPane') ? false : true }",
+    "script"    : "() => { window.activeKit.togglePane('SenderPane') }"
+  },
+  "Window.TogglePaneSession" : {
+    "text"      : "&Session",
+    "icon"      : "king::sessionPane",
+    "state"     : "(action) => { action.checked = action.checkable = window.activeKit.isPaneHidden('SessionPane') ? false : true }",
+    "script"    : "() => { window.activeKit.togglePane('SessionPane') }"
+  },
+  "Window.TogglePaneShell" : {
+    "text"      : "&Shell",
+    "icon"      : "king::shellPane",
+    "state"     : "(action) => { action.checked = action.checkable = window.activeKit.isPaneHidden('ShellPane') ? false : true }",
+    "script"    : "() => { window.activeKit.togglePane('ShellPane') }"
+  },
+  "Window.TogglePaneTransfer" : {
+    "text"      : "&Transfer",
+    "icon"      : "king::transferPane",
+    "state"     : "(action) => { action.checked = action.checkable = window.activeKit.isPaneHidden('TransferPane') ? false : true }",
+    "script"    : "() => { window.activeKit.togglePane('TransferPane') }"
+  },
+  "Window.ToggleQuickBar" : {
+    "text"      : "&Quick Bar",
+    "state"     : "(action) => { action.checked = action.checkable = window.activeKit.isHidden('QuickBar') ? false : true }",
+    "script"    : "() => { window.activeKit.toggleBar('QuickBar') }"
+  },
+  "Window.ToggleRightDockArea" : {
+    "text"      : "&Right Docks",
+    "state"     : "(action) => { action.checked = action.checkable = window.activeKit.isDockAreaVisible(King.RightDockArea) }",
+    "script"    : "() => { window.activeKit.toggleDockArea(King.RightDockArea) }"
+  },
+  "Window.ToggleStatusBar" : {
+    "text"      : "&Status Bar",
+    "state"     : "(action) => { action.checked = action.checkable = window.activeKit.isHidden('StatusBar') ? false : true }",
+    "script"    : "() => { window.activeKit.toggleBar('StatusBar') }"
+  },
+  "Window.ToolbarCustomize" : {
+    "text"      : "&Customize..."
+  },
+  "Window.ToolbarList" : {
+    "text"      : "[Toolbar list is empty]"
+  },
+  "Window.WindowList" : {
+    "text"      : "[Windows list is empty]"
+  },
+  "Window.WindowManager" : {
+    "text"      : "Windows &Manager..."
+  }
+}

@@ -1,0 +1,2392 @@
+[
+  { "keys": "(?P<keys>\\d*([\\$\\(\\)\\+\\-\\^\\{\\}0bBeEGhHjklLMwW]|g[eEg]|z[jk]))",
+    "modes": "command, local",
+    "script": "(captures) => {
+      let text = window.activeText;
+      let position = text.movePosition(text.caretPosition, captures.keys);
+
+      text.gotoPosition(position);
+    }"
+  },
+  { "keys": "\\.",
+    "modes": "command, local",
+    "action": "Window.RepeatLastCommand"
+  },
+  { "keys": "(?P<count>\\d*),",
+    "modes": "command, local",
+    "script": "(captures) => {
+      let text = window.activeText;
+      let command = text.getRegister('Key::VimInlineFinder') || '';
+      const transfer = { f: 'F', F: 'f', t: 'T', T: 't' };
+
+      if (command.length == 2 && command.charAt(0) in transfer) {
+        command = transfer[command.charAt(0)] + command.charAt(1);
+        let position = text.movePosition(text.caretPosition, captures.count + command);
+
+        text.gotoPosition(position);
+      }
+    }"
+  },
+  { "keys": "/",
+    "modes": "command, local",
+    "action": "Text.Find"
+  },
+  { "keys": "(?P<count>\\d*);",
+    "modes": "command, local",
+    "script": "(captures) => {
+      let text = window.activeText;
+      let command = text.getRegister('Key::VimInlineFinder') || '';
+
+      if (command.length == 2 && /^[ft]/i.test(command)) {
+        let position = text.movePosition(text.caretPosition, captures.count + command);
+
+        text.gotoPosition(position);
+      }
+    }"
+  },
+  { "keys": "\\?",
+    "modes": "command, local",
+    "action": "Text.Find"
+  },
+  { "keys": "(?P<keys>\\d*(?P<key>[fFtT].))",
+    "modes": "command, local",
+    "script": "(captures) => {
+      let text = window.activeText;
+      let position = text.movePosition(text.caretPosition, captures.keys);
+
+      text.gotoPosition(position);
+      text.setRegister('Key::VimInlineFinder', captures.key);
+    }"
+  },
+  { "keys": "i",
+    "modes": "command",
+    "action": "Window.SetNormalMode"
+  },
+  { "keys": "i",
+    "modes": "local",
+    "action": "Window.SetRemoteMode"
+  },
+  { "keys": "(\"(?P<named>[0-9a-zA-Z\\+]))?(?P<key>[pP])",
+    "modes": "command, local",
+    "script": "(captures) => {
+      let text = window.activeText;
+
+      if (captures.key == 'p') {
+        text.keyMode = King.RemoteMode;
+      }
+
+      if (captures.named == '+') {
+        text.paste();
+      } else if (captures.named == '' || /[0-9a-z]/i.test(captures.named)) {
+        let string = text.getRegister(captures.named == '' ? '\"' : captures.named);
+
+        text.write(string);
+      }
+
+      if (captures.key == 'P') {
+        text.write(' ')
+      }
+    }"
+  },
+  { "keys": "(\"(?P<named>[0-9a-zA-Z\\+]))?y(?P<keys>y|0|\\d*([\\$\\(\\)\\+\\-\\^\\{\\}bBeEGhHjklLMwW]|g[eEg]|z[jk]|[fFtT].))",
+    "modes": "command, local",
+    "script": "(captures) => {
+      let text = window.activeText;
+      let selectionText;
+
+      if (captures.keys == 'y') {
+        selectionText = text.selectionText();
+      } else {
+        let start = text.caretPosition;
+        let end = text.movePosition(text.caretPosition, captures.keys);
+
+        if (captures.keys == 'G') {
+          end = text.lineEnd(text.lineFromPosition(end));
+        } else if (/\\d*[ft]/.test(captures.keys)) {
+          end = text.movePositionOutsideChar(end + 1, 1);
+        }
+
+        if (start != -1 && end != -1) {
+          selectionText = text.subString(start, end);
+        }
+      }
+
+      if (selectionText) {
+        if (captures.named == '+') {
+          application.copy(selectionText);
+          text.setRegister('0', selectionText);
+        } else if (/[0-9a-z]/i.test(captures.named)) {
+          if (/[A-Z]/.test(captures.named)) {
+            selectionText = text.getRegister(captures.named.toLowerCase()).concat(selectionText);
+          }
+          text.setRegister(captures.named.toLowerCase(), selectionText);
+        }
+        text.setRegister('\"', selectionText);
+      }
+    }"
+  },
+  { "keys": "(?P<line>\\d*)z(?P<type>[btz])",
+    "modes": "command, local",
+    "script": "(captures) => {
+      let text = window.activeText;
+      let caretLine = text.caretLine;
+      let line = Math.max(0, Number(captures.line) ? (Number(captures.line) - 1) : text.caretLine);
+      let topLine = text.visibleLineFromLine(line);
+
+      if (captures.type == 'b') {
+        topLine -= text.screenLineCapacity;
+      } else if (captures.type == 'z') {
+        topLine -= Math.floor(text.screenLineCapacity / 2);
+      }
+      text.scrollTop = Math.max(0, topLine);
+
+      if (line != caretLine) {
+        let position = text.lineStart(line);
+
+        text.setSelection(position);
+      }
+    }"
+  },
+  { "keys": "(?P<type>[vV])((?P<zero>0)|(?P<count>\\d*)((?P<key>[\\$\\(\\)\\+\\-\\^\\{\\}bBeEGhHjklLMwW]|g[eEg]|z[jk]|[fFtT].)|(?P<home><Home>)|(?P<end><End>)|(?P<h><Left>)|(?P<j><Down>)|(?P<k><Up>)|(?P<l><Right>)))",
+    "modes": "command, local",
+    "script": "(captures) => {
+      captures.key = ['h', 'j', 'k', 'l'].find(key => captures[key] != '') || captures.key;
+
+      if (captures.key == '') {
+        if (captures['home'] || captures['zero']) {
+          captures.key = '0';
+        } else if (captures['end']) {
+          captures.key = '$';
+        }
+      }
+      let text = window.activeText;
+      let position = text.movePosition(text.selectionCaretP(), captures.count + captures.key);
+
+      if (position != -1) {
+        text.setSelection(text.selectionAnchorP(), position);
+        text.setSelectionType(captures.type == 'V' ? King.ColumnSelection : King.StreamSelection);
+      }
+    }"
+  },
+  { "keys": "za",
+    "modes": "command, local",
+    "action": "Text.ToggleFold"
+  },
+  { "keys": "zc",
+    "modes": "command, local",
+    "action": "Text.Fold"
+  },
+  { "keys": "zC",
+    "modes": "command, local",
+    "action": "Text.FoldInside"
+  },
+  { "keys": "z[mM]",
+    "modes": "command, local",
+    "action": "Text.FoldAll"
+  },
+  { "keys": "zo",
+    "modes": "command, local",
+    "action": "Text.Unfold"
+  },
+  { "keys": "zO",
+    "modes": "command, local",
+    "action": "Text.UnfoldInside"
+  },
+  { "keys": "z[rR]",
+    "modes": "command, local",
+    "action": "Text.UnfoldAll"
+  },
+  { "keys": "<Backspace>",
+    "modes": "normal",
+    "action": "Text.DeleteBack"
+  },
+  { "keys": "<Backspace>",
+    "modes": "widget",
+    "when": "window.isScope('terminal.filer.view.tree')",
+    "action": "FilerPane.Cdup"
+  },
+  { "keys": "(?P<count>\\d*)<Backspace>",
+    "modes": "command, local",
+    "action": "Text.MoveToPreviousChar"
+  },
+  { "keys": "<Del>",
+    "modes": "normal",
+    "action": "Text.DeleteChar"
+  },
+  { "keys": "<Del>",
+    "modes": "widget",
+    "when": "window.isScope('terminal.filer.view.tree')",
+    "action": "FilerPane.Remove"
+  },  
+  { "keys": "<Del>",
+    "modes": "widget",
+    "when": "window.isScope('terminal.session.tree')",
+    "action": "SessionPane.Remove"
+  },
+  { "keys": "<Del>",
+    "modes": "widget",
+    "when": "window.isScope('terminal.transfer.tree')",
+    "action": "TransferPane.Remove"
+  },
+  { "keys": "<Down>",
+    "modes": "Normal",
+    "action": "Text.MoveToNextLine"
+  },
+  { "keys": "<Down>",
+    "modes": "Remote",
+    "when": "window.activeText.isAutoCompleteVisible()",
+    "action": "Text.MoveToNextLine"
+  },
+  { "keys": "(?P<count>\\d*)<Down>",
+    "modes": "command, local",
+    "action": "Text.MoveToNextLine"
+  },
+  { "keys": "<End>",
+    "modes": "normal, command, local",
+    "action": "Text.MoveToLineEnd"
+  },
+  { "keys": "<Enter>",
+    "modes": "widget",
+    "when": "window.isScope('terminal.filer.view.tree')",
+    "action": "FilerPane.Open"
+  },
+  { "keys": "<Enter>",
+    "modes": "widget",
+    "when": "window.isScope('terminal.outline.tree')",
+    "action": "OutlinePane.Execute"
+  },
+  { "keys": "<Enter>",
+    "modes": "widget",
+    "when": "window.isScope('terminal.session.tree')",
+    "action": "SessionPane.Open"
+  },
+  { "keys": "<Enter>",
+    "modes": "remote",
+    "when": "window.isScope('terminal.view.text') && terminal.activeView().sessionState == King.Unconnected",
+    "action": "Terminal.ReconnectSession"
+  },
+  { "keys": "<Enter>",
+    "modes": "widget",
+    "when": "window.isScope('terminal.transfer.tree')",
+    "action": "TransferPane.Open"
+  },
+  { "keys": "(?P<count>\\d*)<Enter>",
+    "modes": "command, local",
+    "script": "(captures) => {
+      let text = window.activeText;
+      let caretLine = text.caretLine;
+
+      if (caretLine < text.lineCount - 1) {
+        let position = text.lineHome(Math.min(caretLine + (Number(captures.count) || 1), text.lineCount - 1));
+        text.gotoPosition(position);
+      }
+    }"
+  },
+  { "keys": "<Esc>",
+    "modes": "normal",
+    "action": "Window.SetCommandMode"
+  },  
+  { "keys": "<Esc>",
+    "modes": "normal, local",
+    "when": "window.activeText.isSelectionEmpty() == false",
+    "script": "() => { window.activeText.cancelSelection() }"
+  },
+  { "keys": "<Esc>",
+    "modes": "normal, local",
+    "when": "window.activeText.selectionCount() > 1",
+    "script": "() => { window.activeText.cancelMultipleSelections() }"
+  },
+  { "keys": "<Esc>",
+    "modes": "normal",
+    "when": "window.activeText.isSnippetMode()",
+    "script": "() => { window.activeText.cancelSnippetMode() }"
+  },
+  { "keys": "<Esc>",
+    "when": "window.isScope('.view') && window.activeKit.isPaneVisible('search')",
+    "script": "() => { window.activeKit.hidePane('search') }"
+  },
+  { "keys": "<Esc>",
+    "modes": "remote",
+    "when": "window.activeText.isFreeTypeMode()",
+    "script": "() => { window.activeText.cancelFreeTypeMode() }"
+  },
+  { "keys": "<Esc>",
+    "modes": "normal, remote",
+    "when": "window.activeText.isAutoCompleteVisible()",
+    "script": "() => { window.activeText.cancelAutoComplete() }"
+  },
+  { "keys": "<F2>",
+    "modes": "widget",
+    "when": "window.isScope('terminal.filer.view.tree')",
+    "action": "FilerPane.Rename"
+  },
+  { "keys": "<F3>",
+    "modes": "normal, local, widget",
+    "action": "Text.FindNext"
+  },
+  { "keys": "<F3>",
+    "modes": "widget",
+    "when": "window.isScope('terminal.filer.view.tree') && window.activeKit.pane('filer').localSystemMode == false",
+    "action": "FilerPane.Download"
+  },
+  { "keys": "<F3>",
+    "modes": "widget",
+    "when": "window.isScope('terminal.filer.view.tree') && window.activeKit.pane('filer').localSystemMode",
+    "action": "FilerPane.CopyTo"
+  },
+  { "keys": "<F4>",
+    "modes": "widget",
+    "when": "window.isScope('terminal.filer.view.tree') && window.activeKit.pane('filer').localSystemMode == false",
+    "action": "FilerPane.Upload"
+  },
+  { "keys": "<F4>",
+    "modes": "widget",
+    "when": "window.isScope('terminal.filer.view.tree') && window.activeKit.pane('filer').localSystemMode",
+    "action": "FilerPane.CopyFrom"
+  },
+  { "keys": "<F5>",
+    "modes": "widget",
+    "when": "window.isScope('terminal.filer.view.tree')",
+    "action": "FilerPane.Refresh"
+  },
+  { "keys": "<F6>",
+    "modes": "widget",
+    "when": "window.isScope('terminal.filer.view.tree')",
+    "action": "FilerPane.MoveTo"
+  },
+  { "keys": "<F7>",
+    "modes": "widget",
+    "when": "window.isScope('terminal.filer.view.tree')",
+    "action": "FilerPane.CopyDirectoryPathToTerminal"
+  },
+  { "keys": "<F8>",
+    "modes": "widget",
+    "when": "window.isScope('terminal.filer.view.tree')",
+    "action": "FilerPane.SyncTerminalFolder"
+  },
+  { "keys": "<F9>",
+    "modes": "widget",
+    "when": "window.isScope('terminal.filer.view.tree')",
+    "action": "FilerPane.AutoSyncTerminalFolder"
+  },
+  { "keys": "<F9>",
+    "modes": "normal",
+    "action": "Text.SortLinesCaseInsensitive"
+  },
+  { "keys": "<F11>",
+    "modes": "normal, command, widget",
+    "action": "Window.ToggleFullScreen"
+  },
+  { "keys": "<Home>",
+    "modes": "normal, command, local",
+    "action": "Text.MoveToLineHome"
+  },
+  { "keys": "<Ins>",
+    "modes": "normal",
+    "action": "Text.ToggleOvertype"
+  },
+  { "keys": "<Left>",
+    "modes": "normal",
+    "action": "Text.MoveToPreviousChar"
+  },
+  { "keys": "(?P<count>\\d*)<Left>",
+    "modes": "command, local",
+    "action": "Text.MoveToPreviousChar"
+  },
+  { "keys": "<PgDown>",
+    "modes": "normal",
+    "action": "Text.MoveToNextPage"
+  },
+  { "keys": "(?P<count>\\d*)<PgDown>",
+    "modes": "command, local",
+    "action": "Text.MoveToNextPage"
+  },
+  { "keys": "<PgUp>",
+    "modes": "normal",
+    "action": "Text.MoveToPreviousPage"
+  },
+  { "keys": "(?P<count>\\d*)<PgUp>",
+    "modes": "command, local",
+    "action": "Text.MoveToPreviousPage"
+  },
+  { "keys": "<Return>",
+    "modes": "normal",
+    "when": "window.activeText.isReadOnly() == false",
+    "action": "Text.NewLine"
+  },
+  { "keys": "<Return>",
+    "modes": "normal, remote",
+    "when": "window.activeText.isAutoCompleteVisible() && window.activeText.isAutoCompletePreselected()",
+    "script": "() => { window.activeText.commitAutoComplete() }"
+  },
+  { "keys": "<Right>",
+    "modes": "normal",
+    "action": "Text.MoveToNextChar"
+  },
+  { "keys": "(?P<count>\\d*)<Right>",
+    "modes": "command, local",
+    "action": "Text.MoveToNextChar"
+  },
+  { "keys": "(?P<count>\\d*)<Space>",
+    "modes": "command, local",
+    "action": "Text.MoveToNextChar"
+  },
+  { "keys": "<Tab>",
+    "modes": "normal",
+    "when": "() => {
+      let text = window.activeText;
+      let count = text.selectionCount();
+      for (let i = 0; i < count; i++) {
+        if (text.lineFromPosition(text.selectionEndP(i)) > text.lineFromPosition(text.selectionStartP(i)))
+          return true;
+      }
+      return false;
+    }",
+    "action": "Text.IncreaseLineIndent"
+  },
+  { "keys": "<Tab>",
+    "modes": "normal",
+    "when": "window.activeText.canExpandSnippet()",
+    "script": "() => { window.activeText.expandSnippet() }"
+  },
+  { "keys": "<Tab>",
+    "modes": "normal",
+    "when": "window.activeText.isAutoCompleteVisible()",
+    "script": "() => { window.activeText.commitAutoComplete() }"
+  },
+  { "keys": "<Tab>",
+    "modes": "normal",
+    "when": "window.activeText.hasNextSnippetStop()",
+    "script": "() => { let text = window.activeText; text.cancelAutoComplete(); text.jumpToNextSnippetStop() }"
+  },
+  { "keys": "<Up>",
+    "modes": "normal",
+    "action": "Text.MoveToPreviousLine"
+  },
+  { "keys": "<Up>",
+    "modes": "remote",
+    "when": "window.activeText.isAutoCompleteVisible()",
+    "action": "Text.MoveToPreviousLine"
+  },
+  { "keys": "(?P<count>\\d*)<Up>",
+    "modes": "command, local",
+    "action": "Text.MoveToPreviousLine"
+  },
+  { "keys": "<Alt+'>",
+    "action": "Window.GotoSymbol"
+  },
+  { "keys": "<Alt+,>",
+    "modes": "normal, command, local",
+    "action": "Text.SelectColumnToPreviousParagraph"
+  },
+  { "keys": "<Alt+->",
+    "when": "window.isScope('MuxGroup')",
+    "action": "Mux.SplitPaneDown"
+  },
+  { "keys": "<Alt+->",
+    "modes": "normal, command, widget",
+    "when": "window.isScope('terminal.sender.*')",
+    "action": "SenderPane.RemoveSender"
+  },
+  { "keys": "<Alt+.>",
+    "modes": "normal, command, local",
+    "action": "Text.SelectColumnToNextParagraph"
+  },
+  { "keys": "<Alt+/>",
+    "modes": "normal, command, local",
+    "action": "Text.MoveToPreviousWordPart"
+  },
+  { "keys": "<Alt+;>",
+    "action": "Window.ShowPaletteCommand"
+  },
+  { "keys": "<Alt+=>",
+    "modes": "normal, command, widget",
+    "when": "window.isScope('terminal.sender.*')",
+    "action": "SenderPane.AddSender"
+  },
+  { "keys": "<Alt+[>",
+    "modes": "normal, command, local",
+    "action": "Text.MoveToPairStart"
+  },
+  { "keys": "<Alt+[>",
+    "modes": "remote",
+    "action": "Window.ActivatePreviousView"
+  },
+  { "keys": "<Alt+[>",
+    "when": "window.isScope('MuxGroup')",
+    "action": "Mux.SelectWindowPrevious"
+  },
+  { "keys": "<Alt+\\>",
+    "modes": "normal, command, local",
+    "action": "Text.MoveToNextWordPart"
+  },
+  { "keys": "<Alt+\\>",
+    "when": "window.isScope('MuxGroup')",
+    "action": "Mux.SplitPaneRight"
+  },
+  { "keys": "<Alt+]>",
+    "modes": "normal, command, local",
+    "action": "Text.MoveToPairEnd"
+  },
+  { "keys": "<Alt+]>",
+    "modes": "remote",
+    "action": "Window.ActivateNextView"
+  },
+  { "keys": "<Alt+]>",
+    "when": "window.isScope('MuxGroup')",
+    "action": "Mux.SelectWindowNext"
+  },
+  { "keys": "<Alt+0>",
+    "script": "() => { window.activeKit.activateView(0) }"
+  },
+  { "keys": "<Alt+1>",
+    "script": "() => { window.activeKit.activateView(1) }"
+  },
+  { "keys": "<Alt+2>",
+    "script": "() => { window.activeKit.activateView(2) }"
+  },
+  { "keys": "<Alt+3>",
+    "script": "() => { window.activeKit.activateView(3) }"
+  },
+  { "keys": "<Alt+4>",
+    "script": "() => { window.activeKit.activateView(4) }"
+  },
+  { "keys": "<Alt+5>",
+    "script": "() => { window.activeKit.activateView(5) }"
+  },
+  { "keys": "<Alt+6>",
+    "action": "Window.ActivateEditor"
+  },
+  { "keys": "<Alt+7>",
+    "action": "Window.ActivateTerminal"
+  },
+  { "keys": "<Alt+B>",
+    "action": "Window.ShowPaletteMultiplexer"
+  },
+  { "keys": "<Alt+D>",
+    "when": "window.isScope('-terminal.filer.view.tree')",
+    "action": "Window.GotoAddressBar"
+  },
+  { "keys": "<Alt+D>",
+    "when": "window.isScope('terminal.filer.view.tree')",
+    "action": "FilerPane.GotoAddressBar"
+  },
+  { "keys": "<Alt+Down>",
+    "when": "window.isScope('MuxGroup')",
+    "action": "Mux.SelectPaneBelow"
+  },
+  { "keys": "<Alt+End>",
+    "modes": "normal, command, local",
+    "action": "Text.SelectColumnToLineEnd"
+  },
+  { "keys": "<Alt+Enter>",
+    "modes": "remote, local, widget",
+    "action": "Window.ToggleFocusMode"
+  },
+  { "keys": "<Alt+Enter>",
+    "modes": "widget",
+    "when": "window.isScope('terminal.filer.view.tree')",
+    "action": "FilerPane.Property"
+  },
+  { "keys": "<Alt+Enter>",
+    "modes": "widget",
+    "when": "window.isScope('terminal.session.tree')",
+    "action": "SessionPane.Property"
+  },
+  { "keys": "<Alt+Enter>",
+    "modes": "normal, command, widget",
+    "when": "window.isScope('terminal.sender.*')",
+    "action": "SenderPane.StartSender"
+  },
+  { "keys": "<Alt+F3>",
+    "modes": "remote, widget",
+    "action": "Text.FindNext"
+  },
+  { "keys": "<Alt+F4>",
+    "action": "Application.Exit"
+  },
+  { "keys": "<Alt+G>",
+    "modes": "remote, local, widget",
+    "action": "Window.GotoLine"
+  },
+  { "keys": "<Alt+H>",
+    "modes": "normal, command, local",
+    "action": "Text.SelectColumnToPreviousChar"
+  },
+  { "keys": "<Alt+Home>",
+    "modes": "normal, command, local",
+    "action": "Text.SelectColumnToLineHome"
+  },
+  { "keys": "<Alt+J>",
+    "modes": "normal, command, local",
+    "action": "Text.SelectColumnToNextLine"
+  },
+  { "keys": "<Alt+K>",
+    "modes": "normal, command, local",
+    "action": "Text.SelectColumnToPreviousLine"
+  },
+  { "keys": "<Alt+L>",
+    "modes": "normal, command, local",
+    "action": "Text.SelectColumnToNextChar"
+  },
+  { "keys": "<Alt+Left>",
+    "when": "window.isScope('MuxGroup')",
+    "action": "Mux.SelectPaneLeft"
+  },
+  { "keys": "<Alt+Left>",
+    "modes": "widget",
+    "when": "window.isScope('terminal.filer.view.tree')",
+    "action": "FilerPane.GoBackward"
+  },
+  { "keys": "<Alt+M><Alt+C>",
+    "modes": "normal, command, local",
+    "action": "Text.ToggleColumnEdit"
+  },
+  { "keys": "<Alt+M><Alt+H>",
+    "modes": "normal, command, local, remote",
+    "action": "Text.ToggleHexEdit"
+  },
+  { "keys": "<Alt+M><Alt+I>",
+    "modes": "normal, command, local",
+    "action": "Text.ToggleMultipleCaret"
+  },
+  { "keys": "<Alt+M><Alt+R>",
+    "modes": "normal, command, local",
+    "action": "Text.ToggleReadOnly"
+  },
+  { "keys": "<Alt+M><Alt+S>",
+    "modes": "normal, command, local",
+    "action": "Text.ToggleSyncEdit"
+  },
+  { "keys": "<Alt+M><Alt+V>",
+    "modes": "normal, command",
+    "action": "Text.ToggleVirtualSpace"
+  },
+  { "keys": "<Alt+M><Alt+W>",
+    "modes": "normal, command, remote, local",
+    "action": "Text.ToggleWordWrap"
+  },
+  { "keys": "<Alt+N>",
+    "modes": "remote, widget",
+    "when": "window.isScope('terminal.*')",
+    "action": "Terminal.NewSession"
+  },
+  { "keys": "<Alt+N><Alt+C>",
+    "modes": "remote, local",
+    "action": "Text.MoveToNextCommand"
+  },
+  { "keys": "<Alt+N><Alt+E>",
+    "modes": "normal, command, local",
+    "action": "Text.MoveToNextWordEnd"
+  },
+  { "keys": "<Alt+N><Alt+F>",
+    "modes": "normal, command, local",
+    "action": "Text.MoveToNextFold"
+  },
+  { "keys": "<Alt+N><Alt+I>",
+    "modes": "normal, command, local",
+    "action": "Text.MoveToNextIndentation"
+  },
+  { "keys": "<Alt+N><Alt+P>",
+    "modes": "normal, command, local",
+    "action": "Text.MoveToNextParagraph"
+  },
+  { "keys": "<Alt+N><Alt+S>",
+    "modes": "normal, command, local",
+    "action": "Text.MoveToNextScope"
+  },
+  { "keys": "<Alt+N><Alt+]>",
+    "modes": "normal, command, local",
+    "action": "Text.MoveToNextPair"
+  },
+  { "keys": "<Alt+O>",
+    "when": "window.isScope('editor.*')",
+    "action": "Window.GotoFile"
+  },
+  { "keys": "<Alt+O>",
+    "when": "window.isScope('terminal.*')",
+    "action": "Terminal.OpenSession"
+  },
+  { "keys": "<Alt+O>",
+    "when": "window.isScope('terminal.*')",
+    "action": "Window.GotoSession"
+  },
+  { "keys": "<Alt+P><Alt+C>",
+    "modes": "remote, local",
+    "action": "Text.MoveToPreviousCommand"
+  },
+  { "keys": "<Alt+P><Alt+E>",
+    "modes": "normal, command, local",
+    "action": "Text.MoveToPreviousWordEnd"
+  },
+  { "keys": "<Alt+P><Alt+F>",
+    "modes": "normal, command, local",
+    "action": "Text.MoveToPreviousFold"
+  },
+  { "keys": "<Alt+P><Alt+I>",
+    "modes": "normal, command, local",
+    "action": "Text.MoveToPreviousIndentation"
+  },
+  { "keys": "<Alt+P><Alt+P>",
+    "modes": "normal, command, local",
+    "action": "Text.MoveToPreviousParagraph"
+  },
+  { "keys": "<Alt+P><Alt+S>",
+    "modes": "normal, command, local",
+    "action": "Text.MoveToPreviousScope"
+  },
+  { "keys": "<Alt+P><Alt+[>",
+    "modes": "normal, command, local",
+    "action": "Text.MoveToPreviousPair"
+  },
+  { "keys": "<Alt+PgDown>",
+    "modes": "normal, command, local",
+    "action": "Text.SelectColumnToNextStutteredPage"
+  },
+  { "keys": "<Alt+PgUp>",
+    "modes": "normal, command, local",
+    "action": "Text.SelectColumnToPreviousStutteredPage"
+  },
+  { "keys": "<Alt+Q>",
+    "modes": "normal, command, widget",
+    "when": "window.isScope('terminal.sender.*')",
+    "action": "SenderPane.StopSender"
+  },
+  { "keys": "<Alt+R>",
+    "modes": "remote",
+    "when": "terminal.activeView().isMainScreen()",
+    "action": "Terminal.CompleteHistory"
+  },
+  { "keys": "<Alt+Right>",
+    "when": "window.isScope('MuxGroup')",
+    "action": "Mux.SelectPaneRight"
+  },
+  { "keys": "<Alt+Right>",
+    "modes": "widget",
+    "when": "window.isScope('terminal.filer.view.tree')",
+    "action": "FilerPane.GoForward"
+  },
+  { "keys": "<Alt+S>",
+    "action": "Window.ShowPaletteAnything"
+  },
+  { "keys": "<Alt+T><Alt+B>",
+    "modes": "normal, command, local, remote",
+    "action": "Text.ToggleMarginBlank"
+  },
+  { "keys": "<Alt+T><Alt+E>",
+    "modes": "normal, command, local, remote",
+    "action": "Text.ToggleLineEnding"
+  },
+  { "keys": "<Alt+T><Alt+F>",
+    "modes": "normal, command, local, remote",
+    "action": "Text.ToggleMarginFold"
+  },
+  { "keys": "<Alt+T><Alt+I>",
+    "modes": "normal, command, local, remote",
+    "action": "Text.ToggleIndentGuide"
+  },
+  { "keys": "<Alt+T><Alt+L>",
+    "modes": "normal, command, local, remote",
+    "action": "Text.ToggleColumnMarker"
+  },
+  { "keys": "<Alt+T><Alt+N>",
+    "modes": "normal, command, local, remote",
+    "action": "Text.ToggleMarginNumber"
+  },
+  { "keys": "<Alt+T><Alt+S>",
+    "modes": "normal, command, local, remote",
+    "action": "Text.ToggleMarginSymbol"
+  },
+  { "keys": "<Alt+T><Alt+T>",
+    "modes": "local, remote",
+    "action": "Text.ToggleMarginTimestamp"
+  },
+  { "keys": "<Alt+T><Alt+X>",
+    "modes": "normal, command",
+    "action": "Text.ToggleMarginText"
+  },
+  { "keys": "<Alt+T><Alt+W>",
+    "modes": "normal, command, local, remote",
+    "action": "Text.ToggleWrapSymbol"
+  },
+  { "keys": "<Alt+Up>",
+    "when": "window.isScope('MuxGroup')",
+    "action": "Mux.SelectPaneAbove"
+  },
+  { "keys": "<Alt+W><Alt+C>",
+    "when": "window.isScope('editor.*, terminal.*')",
+    "action": "Window.TogglePaneShell"
+  },
+  { "keys": "<Alt+W><Alt+D>",
+    "when": "window.activeDock != null",
+    "action": "Window.CloseActiveDock"
+  },
+  { "keys": "<Alt+W><Alt+E>",
+    "when": "window.isScope('terminal.*')",
+    "action": "Window.TogglePaneExplorer"
+  },
+  { "keys": "<Alt+W><Alt+F>",
+    "when": "window.isScope('editor.*, terminal.*')",
+    "action": "Window.TogglePaneFiler"
+  },
+  { "keys": "<Alt+W><Alt+G>",
+    "when": "window.isScope('*.view')",
+    "action": "Window.CloseActiveGroup"
+  },
+  { "keys": "<Alt+W><Alt+H>",
+    "when": "window.isScope('*.view')",
+    "action": "Window.SplitViewHorizontally"
+  },
+  { "keys": "<Alt+W><Alt+L>",
+    "when": "window.isScope('editor.*, terminal.*')",
+    "action": "Window.TogglePaneOutline"
+  },
+  { "keys": "<Alt+W><Alt+M>",
+    "when": "window.isScope('editor.*, terminal.*')",
+    "action": "Window.ToggleMenuBar"
+  },
+  { "keys": "<Alt+W><Alt+O>",
+    "when": "window.isScope('editor.*')",
+    "action": "Window.TogglePaneOutput"
+  },
+  { "keys": "<Alt+W><Alt+P>",
+    "when": "window.isScope('editor.*')",
+    "action": "Window.TogglePaneProject"
+  },
+  { "keys": "<Alt+W><Alt+Q>",
+    "when": "window.isScope('terminal.*')",
+    "action": "Window.ToggleQuickBar"
+  },
+  { "keys": "<Alt+W><Alt+S>",
+    "when": "window.isScope('terminal.*')",
+    "action": "Window.TogglePaneSession"
+  },
+  { "keys": "<Alt+W><Alt+T>",
+    "when": "window.isScope('terminal.*')",
+    "action": "Window.TogglePaneTransfer"
+  },
+  { "keys": "<Alt+W><Alt+U>",
+    "when": "window.isScope('editor.*, terminal.*')",
+    "action": "Window.ToggleStatusBar"
+  },
+  { "keys": "<Alt+W><Alt+V>",
+    "when": "window.isScope('*.view')",
+    "action": "Window.SplitViewVertically"
+  },
+  { "keys": "<Alt+W><Alt+X>",
+    "when": "window.isScope('terminal.*')",
+    "action": "Window.TogglePaneSender"
+  },
+  { "keys": "<Alt+X>",
+    "modes": "normal, command, widget",
+    "when": "window.isScope('terminal.sender.*')",
+    "action": "SenderPane.ClearSender"
+  },
+  { "keys": "<Alt+X>",
+    "when": "window.isScope('MuxGroup')",
+    "script": "() => {
+       window.activeMuxDesktop.killMuxPane();
+     }"
+  },
+  { "keys": "<Alt+Z>",
+    "when": "window.isScope('MuxGroup')",
+    "action": "Mux.TogglePaneZoom"
+  },
+  { "keys": "<Alt+Shift+?>",
+    "modes": "normal, command, local",
+    "action": "Text.SelectToPreviousWordPart"
+  },
+  { "keys": "<Alt+Shift+F3>",
+    "modes": "remote, widget",
+    "action": "Text.FindPrevious"
+  },
+  { "keys": "<Alt+Shift+Down>",
+    "modes": "normal, command, local",
+    "action": "Text.SelectColumnToNextLine"
+  },
+  { "keys": "<Alt+Shift+Left>",
+    "modes": "normal, command, local",
+    "action": "Text.SelectColumnToPreviousChar"
+  },
+  { "keys": "<Alt+Shift+N><Alt+Shift+E>",
+    "modes": "normal, command, local",
+    "action": "Text.SelectToNextWordEnd"
+  },
+  { "keys": "<Alt+Shift+N><Alt+Shift+F>",
+    "modes": "normal, command, local",
+    "action": "Text.SelectToNextFold"
+  },
+  { "keys": "<Alt+Shift+N><Alt+Shift+I>",
+    "modes": "normal, command, local",
+    "action": "Text.SelectToNextIndentation"
+  },
+  { "keys": "<Alt+Shift+N><Alt+Shift+P>",
+    "modes": "normal, command, local",
+    "action": "Text.SelectToNextParagraph"
+  },
+  { "keys": "<Alt+Shift+N><Alt+Shift+S>",
+    "modes": "normal, command, local",
+    "action": "Text.SelectToNextScope"
+  },
+  { "keys": "<Alt+Shift+N><Alt+Shift+}>",
+    "modes": "normal, command, local",
+    "action": "Text.SelectToNextPair"
+  },
+  { "keys": "<Alt+Shift+P><Alt+Shift+E>",
+    "modes": "normal, command, local",
+    "action": "Text.SelectToPreviousWordEnd"
+  },
+  { "keys": "<Alt+Shift+P><Alt+Shift+F>",
+    "modes": "normal, command, local",
+    "action": "Text.SelectToPreviousFold"
+  },
+  { "keys": "<Alt+Shift+P><Alt+Shift+I>",
+    "modes": "normal, command, local",
+    "action": "Text.SelectToPreviousIndentation"
+  },
+  { "keys": "<Alt+Shift+P><Alt+Shift+P>",
+    "modes": "normal, command, local",
+    "action": "Text.SelectToPreviousParagraph"
+  },
+  { "keys": "<Alt+Shift+P><Alt+Shift+S>",
+    "modes": "normal, command, local",
+    "action": "Text.SelectToPreviousScope"
+  },
+  { "keys": "<Alt+Shift+P><Alt+Shift+{>",
+    "modes": "normal, command, local",
+    "action": "Text.SelectToPreviousPair"
+  },
+  { "keys": "<Alt+Shift+Right>",
+    "modes": "normal, command, local",
+    "action": "Text.SelectColumnToNextChar"
+  },
+  { "keys": "<Alt+Shift+Up>",
+    "modes": "normal, command, local",
+    "action": "Text.SelectColumnToPreviousLine"
+  },
+  { "keys": "<Alt+Shift+{>",
+    "modes": "normal, command, local",
+    "action": "Text.SelectToPairStart"
+  },
+  { "keys": "<Alt+Shift+}>",
+    "modes": "normal, command, local",
+    "action": "Text.SelectToPairEnd"
+  },
+  { "keys": "<Alt+Shift+_>",
+    "when": "window.isScope('MuxGroup')",
+    "action": "Mux.SplitPaneUp"
+  },
+  { "keys": "<Alt+Shift+|>",
+    "when": "window.isScope('MuxGroup')",
+    "action": "Mux.SplitPaneLeft"
+  },
+  { "keys": "<Ctrl+.>",
+    "modes": "local",
+    "action": "Terminal.MoveToNextCommand"
+  },
+  { "keys": "<Ctrl+->",
+    "modes": "normal, command, local, remote",
+    "action": "Text.ZoomOut"
+  },
+  { "keys": "<Ctrl+,>",
+    "modes": "local",
+    "action": "Terminal.MoveToPreviousCommand"
+  },
+  { "keys": "<Ctrl+/>",
+    "modes": "normal",
+    "action": "Text.Comment"
+  },
+  { "keys": "<Ctrl+=>",
+    "modes": "normal, command, local, remote",
+    "action": "Text.ZoomIn"
+  },
+  { "keys": "<Ctrl+A>",
+    "modes": "normal, local",
+    "action": "Text.SelectAll"
+  },
+  { "keys": "<Ctrl+B>",
+    "modes": "normal",
+    "when": "window.isScope('editor.*')",
+    "action": "Tool.BuildScheme"
+  },
+  { "keys": "<Ctrl+B>",
+    "modes": "command, local",
+    "action": "Text.MoveToPreviousPage"
+  },
+  { "keys": "<Ctrl+Backspace>",
+    "modes": "normal",
+    "action": "Text.DeleteWordToStart"
+  },
+  { "keys": "<Ctrl+C>",
+    "modes": "widget",
+    "when": "window.isScope('terminal.outline.tree')",
+    "action": "OutlinePane.Copy"
+  },
+  { "keys": "<Ctrl+C>",
+    "modes": "normal, local",
+    "action": "Text.Copy"
+  },
+  { "keys": "<Ctrl+C>",
+    "modes": "widget",
+    "when": "window.isScope('terminal.filer.view.tree')",
+    "action": "FilerPane.CopySelectedNames"
+  },
+  { "keys": "<Ctrl+C>",
+    "modes": "remote",
+    "when": "terminal.activeView().isModemTransmitting()",
+    "action": "Terminal.CancelModem"
+  },
+  { "keys": "<Ctrl+D>",
+    "modes": "normal",
+    "action": "Text.Duplicate"
+  },
+  { "keys": "<Ctrl+D>",
+    "modes": "remote, local",
+    "when": "terminal.activeView().canWrite() == false",
+    "action": "Window.CloseActiveView"
+  },
+  { "keys": "<Ctrl+D>",
+    "modes": "command, local",
+    "script": "() => {
+      let text = window.activeText;
+      let halfScreenLineCount = Math.floor(text.screenLineCapacity / 2);
+      let caretLine = text.visibleLineFromPosition(text.caretPosition);
+      let line = Math.min(text.visibleLineCount, caretLine + halfScreenLineCount);
+      let position = text.visibleLineStart(line);
+
+      text.scrollTop = Math.min(text.visibleLineCount, text.topLine + halfScreenLineCount);
+      text.gotoPosition(position);
+    }"
+  },
+  { "keys": "<Ctrl+D>",
+    "modes": "widget",
+    "when": "window.isScope('terminal.session.tree')",
+    "action": "SessionPane.Duplicate"
+  },
+  { "keys": "<Ctrl+Del>",
+    "modes": "normal",
+    "action": "Text.DeleteWordToEnd"
+  },
+  { "keys": "<Ctrl+Down>",
+    "modes": "normal, local",
+    "action": "Text.ScrollLineDown"
+  },
+  { "keys": "<Ctrl+E>",
+    "modes": "command, local",
+    "action": "Text.ScrollLineDown"
+  },
+  { "keys": "<Ctrl+End>",
+    "modes": "normal, local",
+    "action": "Text.MoveToDocumentEnd"
+  },
+  { "keys": "<Ctrl+Enter>",
+    "modes": "normal",
+    "action": "Window.SetCommandMode"
+  },
+  { "keys": "<Ctrl+Enter>",
+    "modes": "command",
+    "action": "Window.SetNormalMode"
+  },
+  { "keys": "<Ctrl+Enter>",
+    "modes": "local",
+    "action": "Window.SetRemoteMode"
+  },
+  { "keys": "<Ctrl+Enter>",
+    "modes": "remote",
+    "action": "Window.SetLocalMode"
+  },
+  { "keys": "<Ctrl+F>",
+    "modes": "normal, local, widget",
+    "action": "Text.Find"
+  },
+  { "keys": "<Ctrl+F>",
+    "modes": "command",
+    "action": "Text.MoveToNextPage"
+  },
+  { "keys": "<Ctrl+F3>",
+    "modes": "normal, local",
+    "action": "Text.FindNextSelection"
+  },
+  { "keys": "<Ctrl+F9>",
+    "modes": "normal",
+    "action": "Text.SortLinesCaseSensitive"
+  },
+  { "keys": "<Ctrl+F11>",
+    "modes": "normal, command, widget",
+    "action": "Window.ToggleFullScreen"
+  },
+  { "keys": "<Ctrl+G>",
+    "modes": "widget",
+    "when": "window.isScope('terminal.outline.tree')",
+    "action": "OutlinePane.GotoSymbol"
+  },
+  { "keys": "<Ctrl+G>",
+    "modes": "normal, command, local",
+    "action": "Window.GotoLine"
+  },
+  { "keys": "<Ctrl+H>",
+    "modes": "normal, widget",
+    "when": "window.isScope('editor.*')",
+    "action": "Text.Replace"
+  },
+  { "keys": "<Ctrl+Home>",
+    "modes": "normal, local",
+    "action": "Text.MoveToDocumentStart"
+  },
+  { "keys": "<Ctrl+I><Ctrl+C>",
+    "modes": "normal, local",
+    "action": "Text.SwitchStreamColumn"
+  },
+  { "keys": "<Ctrl+I><Ctrl+D>",
+    "modes": "normal, local",
+    "action": "Text.DropSelection"
+  },
+  { "keys": "<Ctrl+I><Ctrl+I>",
+    "modes": "normal, local",
+    "action": "Text.InvertSelection"
+  },
+  { "keys": "<Ctrl+I><Ctrl+L>",
+    "modes": "normal, local",
+    "action": "Text.LockSelection"
+  },
+  { "keys": "<Ctrl+I><Ctrl+N>",
+    "modes": "normal, local",
+    "action": "Text.ActivateNextSelection"
+  },
+  { "keys": "<Ctrl+I><Ctrl+P>",
+    "modes": "normal, local",
+    "action": "Text.ActivatePreviousSelection"
+  },
+  { "keys": "<Ctrl+I><Ctrl+S>",
+    "modes": "normal, local",
+    "action": "Text.SplitSelection"
+  },
+  { "keys": "<Ctrl+I><Ctrl+X>",
+    "modes": "normal, local",
+    "action": "Text.ExchangeCaretAnchor"
+  },
+  { "keys": "<Ctrl+Ins>",
+    "modes": "normal, command, local, remote",
+    "action": "Text.Copy"
+  },
+  { "keys": "<Ctrl+K><Ctrl+A>",
+    "modes": "normal",
+    "action": "Text.TrimLeadingBlanks"
+  },
+  { "keys": "<Ctrl+K><Ctrl+F>",
+    "modes": "normal",
+    "action": "Text.FormatSelection"
+  },
+  { "keys": "<Ctrl+K><Ctrl+K>",
+    "modes": "normal",
+    "action": "Text.DeleteWord"
+  },
+  { "keys": "<Ctrl+K><Ctrl+L>",
+    "modes": "normal",
+    "action": "Text.DeleteLine"
+  },
+  { "keys": "<Ctrl+K><Ctrl+T>",
+    "modes": "normal",
+    "action": "Text.Tabify"
+  },
+  { "keys": "<Ctrl+K><Ctrl+U>",
+    "modes": "normal",
+    "action": "Text.Untabify"
+  },
+  { "keys": "<Ctrl+K><Ctrl+Z>",
+    "modes": "normal",
+    "action": "Text.TrimTrailingBlanks"
+  },
+  { "keys": "<Ctrl+L>",
+    "modes": "widget",
+    "when": "window.isScope('terminal.filer.view.tree')",
+    "action": "FilerPane.MakeLink"
+  },
+  { "keys": "<Ctrl+L>",
+    "modes": "widget",
+    "when": "window.isScope('terminal.filer.view.tree')",
+    "action": "FilerPane.NewLink"
+  },
+  { "keys": "<Ctrl+L>",
+    "modes": "local, remote",
+    "when": "window.isScope('terminal.view.text')",
+    "action": "Terminal.ClearScreen"
+  },
+  { "keys": "<Ctrl+Left>",
+    "modes": "normal, local",
+    "action": "Text.MoveToPreviousWordStart"
+  },
+  { "keys": "<Ctrl+N>",
+    "modes": "normal, widget",
+    "when": "window.isScope('editor.*')",
+    "action": "Editor.NewFile"
+  },
+  { "keys": "<Ctrl+N>",
+    "modes": "command, local",
+    "map": "<Down>"
+  },
+  { "keys": "<Ctrl+N>",
+    "modes": "widget",
+    "when": "window.isScope('terminal.filer.view.tree')",
+    "action": "FilerPane.MakeFile"
+  },
+  { "keys": "<Ctrl+N>",
+    "modes": "widget",
+    "when": "window.isScope('terminal.filer.view.tree')",
+    "action": "FilerPane.NewFile"
+  },
+  { "keys": "<Ctrl+O>",
+    "modes": "normal, widget",
+    "when": "window.isScope('editor.*')",
+    "action": "Editor.OpenFile"
+  },
+  { "keys": "<Ctrl+P>",
+    "modes": "command, local",
+    "map": "<Up>"
+  },  
+  { "keys": "<Ctrl+P>",
+    "modes": "widget",
+    "when": "window.isScope('terminal.filer.view.tree')",
+    "action": "FilerPane.CopySelectedNamesToTerminal"
+  },
+  { "keys": "<Ctrl+P>",
+    "modes": "widget",
+    "when": "window.isScope('terminal.outline.tree')",
+    "action": "OutlinePane.PreviewSymbol"
+  },
+  { "keys": "<Ctrl+Pause>",
+    "when": "window.isScope('editor.output.*')",
+    "action": "OutputPane.StopTool"
+  },
+  { "keys": "<Ctrl+Pause>",
+    "when": "window.isScope('-editor.output.*')",
+    "action": "Tool.StopToolDialog"
+  },
+  { "keys": "<Ctrl+PgDown>",
+    "modes": "normal, local",
+    "action": "Window.ActivateNextView"
+  },
+  { "keys": "<Ctrl+PgUp>",
+    "modes": "normal, local",
+    "action": "Window.ActivatePreviousView"
+  },
+  { "keys": "<Ctrl+Right>",
+    "modes": "normal, local",
+    "action": "Text.MoveToNextWordStart"
+  },
+  { "keys": "<Ctrl+Q>",
+    "modes": "normal, command, local",
+    "action": "Window.Close"
+  },
+  { "keys": "<Ctrl+S>",
+    "modes": "normal",
+    "when": "window.isScope('editor.*')",
+    "action": "Editor.Save"
+  },
+  { "keys": "<Ctrl+S>",
+    "modes": "normal",
+    "when": "window.isScope('.text, -terminal.view.text')",
+    "action": "Text.Save"
+  },
+  { "keys": "<Ctrl+T><Ctrl+A>",
+    "modes": "normal",
+    "action": "Text.ConvertSpaceToTab"
+  },
+  { "keys": "<Ctrl+T><Ctrl+I>",
+    "modes": "normal",
+    "action": "Text.MakeInverseCase"
+  },
+  { "keys": "<Ctrl+T><Ctrl+K>",
+    "when": "window.isScope('terminal.*')",
+    "action": "Terminal.ManageOneKeys"
+  },
+  { "keys": "<Ctrl+T><Ctrl+L>",
+    "modes": "normal",
+    "action": "Text.MakeLowerCase"
+  },
+  { "keys": "<Ctrl+T><Ctrl+M>",
+    "modes": "normal",
+    "action": "Text.UnifyEolToCR"
+  },
+  { "keys": "<Ctrl+T><Ctrl+S>",
+    "modes": "normal",
+    "action": "Text.ConvertTabToSpace"
+  },
+  { "keys": "<Ctrl+T><Ctrl+T>",
+    "modes": "normal",
+    "action": "Text.MakeTitleCase"
+  },
+  { "keys": "<Ctrl+T><Ctrl+T>",
+    "when": "window.isScope('terminal.*')",
+    "action": "Terminal.ManageTriggers"
+  },
+  { "keys": "<Ctrl+T><Ctrl+U>",
+    "modes": "normal",
+    "action": "Text.MakeUpperCase"
+  },
+  { "keys": "<Ctrl+T><Ctrl+U>",
+    "when": "window.isScope('terminal.*')",
+    "action": "Terminal.ManageTunnels"
+  },
+  { "keys": "<Ctrl+T><Ctrl+W>",
+    "modes": "normal",
+    "action": "Text.UnifyEolToCRLF"
+  },
+  { "keys": "<Ctrl+T><Ctrl+X>",
+    "modes": "normal",
+    "action": "Text.UnifyEolToLF"
+  },
+  { "keys": "<Ctrl+U>",
+    "modes": "command, local",
+    "script": "() => {
+      let text = window.activeText;
+      let halfScreenLineCount = Math.floor(text.screenLineCapacity / 2);
+      let caretLine = text.visibleLineFromPosition(text.caretPosition);
+      let line = Math.max(0, caretLine - halfScreenLineCount);
+      let position = text.visibleLineStart(line);
+
+      text.scrollTop = Math.min(0, text.topLine - halfScreenLineCount);
+      text.gotoPosition(position);
+    }"
+  },
+  { "keys": "<Ctrl+Up>",
+    "modes": "normal, local",
+    "action": "Text.ScrollLineUp"
+  },
+  { "keys": "<Ctrl+V>",
+    "modes": "normal, local",
+    "action": "Text.Paste"
+  },
+  { "keys": "<Ctrl+W>",
+    "modes": "normal, command, local, widget",
+    "action": "Window.CloseActiveView"
+  },
+  { "keys": "<Ctrl+X>",
+    "modes": "normal",
+    "action": "Text.Cut"
+  },
+  { "keys": "<Ctrl+X><Ctrl+X>",
+    "modes": "remote",
+    "when": "terminal.activeView().isModemTransmitting()",
+    "action": "Terminal.CancelModem"
+  },
+  { "keys": "<Ctrl+Y>",
+    "modes": "normal",
+    "action": "Text.Redo"
+  },
+  { "keys": "<Ctrl+Y>",
+    "modes": "command, local",
+    "action": "Text.ScrollLineUp"
+  },
+  { "keys": "<Ctrl+Z>",
+    "modes": "normal",
+    "action": "Text.Undo"
+  },
+  { "keys": "<Ctrl+Alt+,>",
+    "modes": "normal",
+    "action": "Text.TransposePreviousWord"
+  },
+  { "keys": "<Ctrl+Alt+->",
+    "modes": "normal, local",
+    "action": "Text.Fold"
+  },
+  { "keys": "<Ctrl+Alt+.>",
+    "modes": "normal",
+    "action": "Text.TransposeNextWord"
+  },
+  { "keys": "<Ctrl+Alt+0>",
+    "modes": "normal, local",
+    "action": "Text.UnfoldInside"
+  },
+  { "keys": "<Ctrl+Alt+9>",
+    "modes": "normal, local",
+    "action": "Text.FoldInside"
+  },
+  { "keys": "<Ctrl+Alt+=>",
+    "modes": "normal, local",
+    "action": "Text.Unfold"
+  },
+  { "keys": "<Ctrl+Alt+Down>",
+    "modes": "normal",
+    "action": "Text.TransposeNextLine"
+  },
+  { "keys": "<Ctrl+Alt+F3>",
+    "modes": "remote",
+    "action": "Text.FindNextSelection"
+  },
+  { "keys": "<Ctrl+Alt+L>",
+    "when": "window.isScope('editor.*, terminal.*')",
+    "action": "Window.LockScreen"
+  },
+  { "keys": "<Ctrl+Alt+Left>",
+    "modes": "normal",
+    "action": "Text.TransposePreviousChar"
+  },
+  { "keys": "<Ctrl+Alt+Right>",
+    "modes": "normal",
+    "action": "Text.TransposeNextChar"
+  },
+  { "keys": "<Ctrl+Alt+S>",
+    "modes": "normal",
+    "when": "window.isScope('editor.*')",
+    "action": "Editor.SaveAll"
+  },
+  { "keys": "<Ctrl+Alt+Up>",
+    "modes": "normal",
+    "action": "Text.TransposePreviousLine"
+  },
+  { "keys": "<Ctrl+Alt+[>",
+    "modes": "normal, local",
+    "action": "Text.FoldAll"
+  },
+  { "keys": "<Ctrl+Alt+]>",
+    "modes": "normal, local",
+    "action": "Text.UnfoldAll"
+  },
+  { "keys": "<Ctrl+Shift+_>",
+    "modes": "normal, local",
+    "action": "Text.SelectFold"
+  },
+  { "keys": "<Ctrl+Shift+.>",
+    "modes": "normal, local",
+    "action": "Text.SelectScope"
+  },
+  { "keys": "<Ctrl+Shift+/>",
+    "modes": "normal",
+    "action": "Text.Uncomment"
+  },
+  { "keys": "<Ctrl+Shift+/>",
+    "modes": "local, remote",
+    "action": "Terminal.SelectCommand"
+  },
+  { "keys": "<Ctrl+Shift+=>",
+    "modes": "normal, local",
+    "action": "Text.SelectIndentation"
+  },
+  { "keys": "<Ctrl+Shift+A>",
+    "modes": "local, remote",
+    "action": "Terminal.SelectAll"
+  },
+  { "keys": "<Ctrl+Shift+A>",
+    "modes": "local, remote",
+    "action": "Text.SelectAll"
+  },
+  { "keys": "<Ctrl+Shift+B>",
+    "modes": "normal",
+    "when": "window.isScope('editor.*')",
+    "action": "Tool.CancelBuildScheme"
+  },
+  { "keys": "<Ctrl+Shift+C>",
+    "modes": "widget",
+    "when": "window.isScope('terminal.filer.view.tree')",
+    "action": "FilerPane.CopySelectedPaths"
+  },
+  { "keys": "<Ctrl+Shift+C>",
+    "modes": "widget",
+    "when": "window.isScope('terminal.outline.tree')",
+    "action": "OutlinePane.CopyOutput"
+  },
+  { "keys": "<Ctrl+Shift+C>",
+    "modes": "local, remote",
+    "action": "Text.Copy"
+  },
+  { "keys": "<Ctrl+Shift+D>",
+    "modes": "local, remote",
+    "when": "window.isScope('terminal.*')",
+    "action": "Terminal.DuplicateSession"
+  },
+  { "keys": "<Ctrl+Shift+D>",
+    "modes": "normal, command",
+    "when": "window.isScope('editor.*')",
+    "action": "Window.DuplicateView"
+  },
+  { "keys": "<Ctrl+Shift+Down>",
+    "modes": "remote",
+    "script": "() => { window.activeText.scrollTop += 1 }"
+  },
+  { "keys": "<Ctrl+Shift+End>",
+    "modes": "normal, local",
+    "action": "Text.SelectToDocumentEnd"
+  },
+  { "keys": "<Ctrl+Shift+End>",
+    "modes": "remote",
+    "script": "() => { let text = window.activeText; text.scrollTop = text.visibleLineCount }"
+  },
+  { "keys": "<Ctrl+Shift+F>",
+    "modes": "local, remote, widget",
+    "when": "window.isScope('terminal.*')",
+    "action": "Text.Find"
+  },
+  { "keys": "<Ctrl+Shift+F>",
+    "modes": "normal, widget",
+    "when": "window.isScope('editor.*')",
+    "action": "Text.FindInFiles"
+  },
+  { "keys": "<Ctrl+Shift+F3>",
+    "modes": "normal, local, remote",
+    "action": "Text.FindPreviousSelection"
+  },
+  { "keys": "<Ctrl+Shift+H>",
+    "modes": "normal, widget",
+    "when": "window.isScope('editor.*')",
+    "action": "Text.ReplaceInFiles"
+  },
+  { "keys": "<Ctrl+Shift+Home>",
+    "modes": "normal, local",
+    "action": "Text.SelectToDocumentStart"
+  },
+  { "keys": "<Ctrl+Shift+Home>",
+    "modes": "remote",
+    "script": "() => { window.activeText.scrollTop = 0 }"
+  },
+  { "keys": "<Ctrl+Shift+K>",
+    "modes": "normal, local",
+    "action": "Text.SelectWord"
+  },
+  { "keys": "<Ctrl+Shift+L>",
+    "modes": "normal, local",
+    "action": "Text.SelectLine"
+  },
+  { "keys": "<Ctrl+Shift+L>",
+    "modes": "local, remote",
+    "when": "window.isScope('terminal.view.text')",
+    "action": "Terminal.ClearScrollback"
+  },
+  { "keys": "<Ctrl+Shift+Left>",
+    "modes": "normal, command",
+    "action": "Text.SelectToPreviousWordStart"
+  },
+  { "keys": "<Ctrl+Shift+Left>",
+    "modes": "remote, local",
+    "action": "Terminal.MoveToPreviousCommand"
+  },
+  { "keys": "<Ctrl+Shift+M>",
+    "when": "window.isScope('terminal.*')",
+    "action": "Terminal.SyncInput"
+  },
+  { "keys": "<Ctrl+Shift+N>",
+    "action": "Application.NewWindow"
+  },
+  { "keys": "<Ctrl+Shift+N>",
+    "modes": "widget",
+    "when": "window.isScope('terminal.filer.view.tree')",
+    "action": "FilerPane.MakeDirectory"
+  },
+  { "keys": "<Ctrl+Shift+N>",
+    "modes": "widget",
+    "when": "window.isScope('terminal.filer.view.tree')",
+    "action": "FilerPane.NewDirectory"
+  },
+  { "keys": "<Ctrl+Shift+P>",
+    "modes": "normal, local",
+    "action": "Text.SelectParagraph"
+  },
+  { "keys": "<Ctrl+Shift+P>",
+    "modes": "widget",
+    "when": "window.isScope('terminal.filer.view.tree')",
+    "action": "FilerPane.CopySelectedPathsToTerminal"
+  },
+  { "keys": "<Ctrl+Shift+PgDown>",
+    "modes": "remote",
+    "script": "() => { let text = window.activeText; text.scrollTop += text.screenLineCapacity }"
+  },
+  { "keys": "<Ctrl+Shift+PgUp>",
+    "modes": "remote",
+    "script": "() => { let text = window.activeText; text.scrollTop -= text.screenLineCapacity }"
+  },
+  { "keys": "<Ctrl+Shift+Q>",
+    "modes": "local, remote",
+    "action": "Window.Close"
+  },
+  { "keys": "<Ctrl+Shift+R>",
+    "modes": "normal, widget",
+    "when": "window.isScope('editor.*')",
+    "action": "Tool.RunToolDialog"
+  },
+  { "keys": "<Ctrl+Shift+Right>",
+    "modes": "normal, local",
+    "action": "Text.SelectToNextWordStart"
+  },
+  { "keys": "<Ctrl+Shift+Right>",
+    "modes": "remote, local",
+    "action": "Terminal.MoveToNextCommand"
+  },
+  { "keys": "<Ctrl+Shift+S>",
+    "modes": "normal, command",
+    "when": "window.isScope('editor.*')",
+    "action": "Editor.SaveAs"
+  },
+  { "keys": "<Ctrl+Shift+S>",
+    "modes": "local, remote",
+    "when": "window.isScope('terminal.*')",
+    "action": "Terminal.Save"
+  },
+  { "keys": "<Ctrl+Shift+T>",
+    "action": "Window.ReopenClosedView"
+  },
+  { "keys": "<Ctrl+Shift+Up>",
+    "modes": "remote",
+    "script": "() => { window.activeText.scrollTop -= 1 }"
+  },
+  { "keys": "<Ctrl+Shift+V>",
+    "modes": "local, remote",
+    "action": "Text.Paste"
+  },
+  { "keys": "<Ctrl+Shift+W>",
+    "modes": "local, remote",
+    "action": "Window.CloseActiveView"
+  },
+  { "keys": "<Ctrl+Shift+X>",
+    "modes": "local, remote",
+    "when": "terminal.activeView().isFreeTypeMode()",
+    "action": "Terminal.Cut"
+  },
+  { "keys": "<Ctrl+Shift+X>",
+    "modes": "local, remote",
+    "when": "terminal.activeView().isFreeTypeMode() == false",
+    "action": "Terminal.PasteSelectedText"
+  },
+  { "keys": "<Ctrl+Shift+[>",
+    "modes": "normal, local",
+    "action": "Text.SelectPair"
+  },
+  { "keys": "<Ctrl+Shift+]>",
+    "modes": "normal, local",
+    "action": "Text.SelectPair"
+  },
+  { "keys": "<Meta+.>",
+    "modes": "local",
+    "action": "Terminal.MoveToNextCommand"
+  },
+  { "keys": "<Meta+->",
+    "modes": "normal, command, local, remote",
+    "action": "Text.ZoomOut"
+  },
+  { "keys": "<Meta+,>",
+    "modes": "local",
+    "action": "Terminal.MoveToPreviousCommand"
+  },
+  { "keys": "<Meta+/>",
+    "modes": "normal",
+    "action": "Text.Comment"
+  },
+  { "keys": "<Meta+=>",
+    "modes": "normal, command, local, remote",
+    "action": "Text.ZoomIn"
+  },
+  { "keys": "<Meta+0>",
+    "modes": "normal, local",
+    "action": "Text.UnfoldInside"
+  },
+  { "keys": "<Meta+0>",
+    "script": "() => { window.activeKit.activateView(0) }"
+  },
+  { "keys": "<Meta+1>",
+    "script": "() => { window.activeKit.activateView(1) }"
+  },
+  { "keys": "<Meta+2>",
+    "script": "() => { window.activeKit.activateView(2) }"
+  },
+  { "keys": "<Meta+3>",
+    "script": "() => { window.activeKit.activateView(3) }"
+  },
+  { "keys": "<Meta+4>",
+    "script": "() => { window.activeKit.activateView(4) }"
+  },
+  { "keys": "<Meta+5>",
+    "script": "() => { window.activeKit.activateView(5) }"
+  },
+  { "keys": "<Meta+6>",
+    "action": "Window.ActivateEditor"
+  },
+  { "keys": "<Meta+7>",
+    "action": "Window.ActivateTerminal"
+  },
+  { "keys": "<Meta+9>",
+    "modes": "normal, local",
+    "action": "Text.FoldInside"
+  },
+  { "keys": "<Meta+A>",
+    "modes": "normal, command, local, remote",
+    "action": "Text.SelectAll"
+  },
+  { "keys": "<Meta+B>",
+    "modes": "normal",
+    "when": "window.isScope('editor.*')",
+    "action": "Tool.BuildScheme"
+  },
+  { "keys": "<Meta+B>",
+    "modes": "command, local",
+    "action": "Text.MoveToPreviousPage"
+  },
+  { "keys": "<Meta+Backspace>",
+    "modes": "normal",
+    "action": "Text.DeleteWordToStart"
+  },
+  { "keys": "<Meta+C>",
+    "modes": "widget",
+    "when": "window.isScope('terminal.outline.tree')",
+    "action": "OutlinePane.Copy"
+  },
+  { "keys": "<Meta+C>",
+    "modes": "normal, command, local, remote",
+    "when": "window.isScope('.text')",
+    "action": "Text.Copy"
+  },
+  { "keys": "<Meta+C>",
+    "modes": "widget",
+    "when": "window.isScope('terminal.filer.view.tree')",
+    "action": "FilerPane.CopySelectedNames"
+  },
+  { "keys": "<Meta+C>",
+    "modes": "remote",
+    "when": "terminal.activeView().isModemTransmitting()",
+    "action": "Terminal.CancelModem"
+  },
+  { "keys": "<Meta+D>",
+    "modes": "normal",
+    "action": "Text.Duplicate"
+  },
+  { "keys": "<Meta+D>",
+    "modes": "command, local",
+    "script": "() => {
+      let text = window.activeText;
+      let halfScreenLineCount = Math.floor(text.screenLineCapacity / 2);
+      let caretLine = text.visibleLineFromPosition(text.caretPosition);
+      let line = Math.min(text.visibleLineCount, caretLine + halfScreenLineCount);
+      let position = text.visibleLineStart(line);
+
+      text.scrollTop = Math.min(text.visibleLineCount, text.topLine + halfScreenLineCount);
+      text.gotoPosition(position);
+    }"
+  },
+  { "keys": "<Meta+D>",
+    "modes": "widget",
+    "when": "window.isScope('terminal.session.tree')",
+    "action": "SessionPane.Duplicate"
+  },
+  { "keys": "<Meta+Del>",
+    "modes": "normal",
+    "action": "Text.DeleteWordToEnd"
+  },
+  { "keys": "<Meta+Down>",
+    "modes": "normal, local",
+    "action": "Text.ScrollLineDown"
+  },
+  { "keys": "<Meta+E>",
+    "modes": "command, local",
+    "action": "Text.ScrollLineDown"
+  },
+  { "keys": "<Meta+End>",
+    "modes": "normal, local",
+    "action": "Text.MoveToDocumentEnd"
+  },
+  { "keys": "<Meta+F>",
+    "modes": "normal, command, local, remote, widget",
+    "action": "Text.Find"
+  },
+  { "keys": "<Meta+F2>",
+    "modes": "normal, command, local, remote",
+    "action": "Window.ToggleBookmark"
+  },
+  { "keys": "<Meta+F3>",
+    "modes": "normal, command, local, remote",
+    "action": "Text.FindNextSelection"
+  },
+  { "keys": "<Meta+F9>",
+    "modes": "normal",
+    "action": "Text.SortLinesCaseSensitive"
+  },
+  { "keys": "<Meta+F11>",
+    "modes": "normal, command, widget",
+    "action": "Window.ToggleFullScreen"
+  },
+  { "keys": "<Meta+G>",
+    "modes": "widget",
+    "when": "window.isScope('terminal.outline.tree')",
+    "action": "OutlinePane.GotoSymbol"
+  },
+  { "keys": "<Meta+G>",
+    "modes": "normal, command, local",
+    "action": "Window.GotoLine"
+  },
+  { "keys": "<Meta+H>",
+    "modes": "normal, widget",
+    "when": "window.isScope('editor.*')",
+    "action": "Text.Replace"
+  },
+  { "keys": "<Meta+Home>",
+    "modes": "normal, local",
+    "action": "Text.MoveToDocumentStart"
+  },
+  { "keys": "<Meta+I><Meta+C>",
+    "modes": "normal, local",
+    "action": "Text.SwitchStreamColumn"
+  },
+  { "keys": "<Meta+I><Meta+D>",
+    "modes": "normal, local",
+    "action": "Text.DropSelection"
+  },
+  { "keys": "<Meta+I><Meta+I>",
+    "modes": "normal, local",
+    "action": "Text.InvertSelection"
+  },
+  { "keys": "<Meta+I><Meta+L>",
+    "modes": "normal, local",
+    "action": "Text.LockSelection"
+  },
+  { "keys": "<Meta+I><Meta+N>",
+    "modes": "normal, local",
+    "action": "Text.ActivateNextSelection"
+  },
+  { "keys": "<Meta+I><Meta+P>",
+    "modes": "normal, local",
+    "action": "Text.ActivatePreviousSelection"
+  },
+  { "keys": "<Meta+I><Meta+S>",
+    "modes": "normal, local",
+    "action": "Text.SplitSelection"
+  },
+  { "keys": "<Meta+I><Meta+X>",
+    "modes": "normal, local",
+    "action": "Text.ExchangeCaretAnchor"
+  },
+  { "keys": "<Meta+Ins>",
+    "modes": "normal, command, local, remote",
+    "action": "Text.Copy"
+  },
+  { "keys": "<Meta+K><Meta+A>",
+    "modes": "normal",
+    "action": "Text.TrimLeadingBlanks"
+  },
+  { "keys": "<Meta+K><Meta+F>",
+    "modes": "normal",
+    "action": "Text.FormatSelection"
+  },
+  { "keys": "<Meta+K><Meta+K>",
+    "modes": "normal",
+    "action": "Text.DeleteWord"
+  },
+  { "keys": "<Meta+K><Meta+L>",
+    "modes": "normal",
+    "action": "Text.DeleteLine"
+  },
+  { "keys": "<Meta+K><Meta+T>",
+    "modes": "normal",
+    "action": "Text.Tabify"
+  },
+  { "keys": "<Meta+K><Meta+U>",
+    "modes": "normal",
+    "action": "Text.Untabify"
+  },
+  { "keys": "<Meta+K><Meta+Z>",
+    "modes": "normal",
+    "action": "Text.TrimTrailingBlanks"
+  },
+  { "keys": "<Meta+L>",
+    "modes": "widget",
+    "when": "window.isScope('terminal.filer.view.tree')",
+    "action": "FilerPane.MakeLink"
+  },
+  { "keys": "<Meta+L>",
+    "modes": "widget",
+    "when": "window.isScope('terminal.filer.view.tree')",
+    "action": "FilerPane.NewLink"
+  },
+  { "keys": "<Meta+L>",
+    "modes": "local, remote",
+    "when": "window.isScope('terminal.view.text')",
+    "action": "Terminal.ClearScreen"
+  },
+  { "keys": "<Meta+Left>",
+    "modes": "normal, local",
+    "action": "Text.MoveToPreviousWordStart"
+  },
+  { "keys": "<Meta+N>",
+    "modes": "normal, widget",
+    "when": "window.isScope('editor.*')",
+    "action": "Editor.NewFile"
+  },
+  { "keys": "<Meta+N>",
+    "modes": "remote, widget",
+    "when": "window.isScope('terminal.*')",
+    "action": "Terminal.NewSession"
+  },
+  { "keys": "<Meta+N>",
+    "modes": "command, local",
+    "map": "<Down>"
+  },
+  { "keys": "<Meta+N>",
+    "modes": "widget",
+    "when": "window.isScope('terminal.filer.view.tree')",
+    "action": "FilerPane.MakeFile"
+  },
+  { "keys": "<Meta+N>",
+    "modes": "widget",
+    "when": "window.isScope('terminal.filer.view.tree')",
+    "action": "FilerPane.NewFile"
+  },
+  { "keys": "<Meta+O>",
+    "modes": "normal, widget",
+    "when": "window.isScope('editor.*')",
+    "action": "Editor.OpenFile"
+  },
+  { "keys": "<Meta+O>",
+    "modes": "local, remote",
+    "when": "window.isScope('terminal.*')",
+    "action": "Terminal.OpenSession"
+  },
+  { "keys": "<Meta+P>",
+    "modes": "command, local",
+    "map": "<Up>"
+  },  
+  { "keys": "<Meta+P>",
+    "modes": "widget",
+    "when": "window.isScope('terminal.filer.view.tree')",
+    "action": "FilerPane.CopySelectedNamesToTerminal"
+  },
+  { "keys": "<Meta+P>",
+    "modes": "widget",
+    "when": "window.isScope('terminal.outline.tree')",
+    "action": "OutlinePane.PreviewSymbol"
+  },
+  { "keys": "<Meta+Pause>",
+    "when": "window.isScope('editor.output.*')",
+    "action": "OutputPane.StopTool"
+  },
+  { "keys": "<Meta+Pause>",
+    "when": "window.isScope('-editor.output.*')",
+    "action": "Tool.StopToolDialog"
+  },
+  { "keys": "<Meta+PgDown>",
+    "modes": "normal, local",
+    "action": "Window.ActivateNextView"
+  },
+  { "keys": "<Meta+PgUp>",
+    "modes": "normal, local",
+    "action": "Window.ActivatePreviousView"
+  },
+  { "keys": "<Meta+Right>",
+    "modes": "normal, local",
+    "action": "Text.MoveToNextWordStart"
+  },
+  { "keys": "<Meta+Q>",
+    "modes": "normal, command, local",
+    "action": "Window.Close"
+  },
+  { "keys": "<Meta+S>",
+    "modes": "normal, command",
+    "when": "window.isScope('editor.*')",
+    "action": "Editor.Save"
+  },
+  { "keys": "<Meta+S>",
+    "modes": "local, remote",
+    "when": "window.isScope('terminal.*')",
+    "action": "Terminal.Save"
+  },
+  { "keys": "<Meta+S>",
+    "modes": "normal, command",
+    "when": "window.isScope('.text, -terminal.view.text')",
+    "action": "Text.Save"
+  },
+  { "keys": "<Meta+T><Meta+A>",
+    "modes": "normal",
+    "action": "Text.ConvertSpaceToTab"
+  },
+  { "keys": "<Meta+T><Meta+I>",
+    "modes": "normal",
+    "action": "Text.MakeInverseCase"
+  },
+  { "keys": "<Meta+T><Meta+K>",
+    "when": "window.isScope('terminal.*')",
+    "action": "Terminal.ManageOneKeys"
+  },
+  { "keys": "<Meta+T><Meta+L>",
+    "modes": "normal",
+    "action": "Text.MakeLowerCase"
+  },
+  { "keys": "<Meta+T><Meta+M>",
+    "modes": "normal",
+    "action": "Text.UnifyEolToCR"
+  },
+  { "keys": "<Meta+T><Meta+S>",
+    "modes": "normal",
+    "action": "Text.ConvertTabToSpace"
+  },
+  { "keys": "<Meta+T><Meta+T>",
+    "modes": "normal",
+    "action": "Text.MakeTitleCase"
+  },
+  { "keys": "<Meta+T><Meta+T>",
+    "when": "window.isScope('terminal.*')",
+    "action": "Terminal.ManageTriggers"
+  },
+  { "keys": "<Meta+T><Meta+U>",
+    "modes": "normal",
+    "action": "Text.MakeUpperCase"
+  },
+  { "keys": "<Meta+T><Meta+U>",
+    "when": "window.isScope('terminal.*')",
+    "action": "Terminal.ManageTunnels"
+  },
+  { "keys": "<Meta+T><Meta+W>",
+    "modes": "normal",
+    "action": "Text.UnifyEolToCRLF"
+  },
+  { "keys": "<Meta+T><Meta+X>",
+    "modes": "normal",
+    "action": "Text.UnifyEolToLF"
+  },
+  { "keys": "<Meta+U>",
+    "modes": "command, local",
+    "script": "() => {
+      let text = window.activeText;
+      let halfScreenLineCount = Math.floor(text.screenLineCapacity / 2);
+      let caretLine = text.visibleLineFromPosition(text.caretPosition);
+      let line = Math.max(0, caretLine - halfScreenLineCount);
+      let position = text.visibleLineStart(line);
+
+      text.scrollTop = Math.min(0, text.topLine - halfScreenLineCount);
+      text.gotoPosition(position);
+    }"
+  },
+  { "keys": "<Meta+Up>",
+    "modes": "normal, local",
+    "action": "Text.ScrollLineUp"
+  },
+  { "keys": "<Meta+V>",
+    "modes": "normal, command, local, remote",
+    "when": "window.isScope('.text')",
+    "action": "Text.Paste"
+  },
+  { "keys": "<Meta+W>",
+    "modes": "normal, command, local, remote, widget",
+    "action": "Window.CloseActiveView"
+  },
+  { "keys": "<Meta+X>",
+    "modes": "normal, command",
+    "action": "Text.Cut"
+  },
+  { "keys": "<Meta+Y>",
+    "modes": "normal",
+    "action": "Text.Redo"
+  },
+  { "keys": "<Meta+Y>",
+    "modes": "command, local",
+    "action": "Text.ScrollLineUp"
+  },
+  { "keys": "<Meta+Z>",
+    "modes": "normal",
+    "action": "Text.Undo"
+  },
+  { "keys": "<Meta+Alt+,>",
+    "modes": "normal",
+    "action": "Text.TransposePreviousWord"
+  },
+  { "keys": "<Meta+Alt+->",
+    "modes": "normal, local",
+    "action": "Text.Fold"
+  },
+  { "keys": "<Meta+Alt+.>",
+    "modes": "normal",
+    "action": "Text.TransposeNextWord"
+  },
+  { "keys": "<Meta+Alt+Down>",
+    "modes": "normal",
+    "action": "Text.TransposeNextLine"
+  },
+  { "keys": "<Meta+Alt+L>",
+    "when": "window.isScope('editor.*, terminal.*')",
+    "action": "Window.LockScreen"
+  },
+  { "keys": "<Meta+Alt+Left>",
+    "modes": "normal",
+    "action": "Text.TransposePreviousChar"
+  },
+  { "keys": "<Meta+Alt+Right>",
+    "modes": "normal",
+    "action": "Text.TransposeNextChar"
+  },
+  { "keys": "<Meta+Alt+S>",
+    "modes": "normal",
+    "when": "window.isScope('editor.*')",
+    "action": "Editor.SaveAll"
+  },
+  { "keys": "<Meta+Alt+Up>",
+    "modes": "normal",
+    "action": "Text.TransposePreviousLine"
+  },
+  { "keys": "<Meta+Alt+[>",
+    "modes": "normal, local",
+    "action": "Text.FoldAll"
+  },
+  { "keys": "<Meta+Alt+]>",
+    "modes": "normal, local",
+    "action": "Text.UnfoldAll"
+  },
+  { "keys": "<Meta+Shift+_>",
+    "modes": "normal, local",
+    "action": "Text.SelectFold"
+  },
+  { "keys": "<Meta+Shift+.>",
+    "modes": "normal, local",
+    "action": "Text.SelectScope"
+  },
+  { "keys": "<Meta+Shift+/>",
+    "modes": "normal",
+    "action": "Text.Uncomment"
+  },
+  { "keys": "<Meta+Shift+=>",
+    "modes": "normal, local",
+    "action": "Text.SelectIndentation"
+  },
+  { "keys": "<Meta+Shift+A>",
+    "modes": "local, remote",
+    "action": "Terminal.SelectAll"
+  },
+  { "keys": "<Meta+Shift+A>",
+    "modes": "local, remote",
+    "action": "Text.SelectAll"
+  },
+  { "keys": "<Meta+Shift+B>",
+    "modes": "normal",
+    "when": "window.isScope('editor.*')",
+    "action": "Tool.CancelBuildScheme"
+  },
+  { "keys": "<Meta+Shift+C>",
+    "modes": "widget",
+    "when": "window.isScope('terminal.filer.view.tree')",
+    "action": "FilerPane.CopySelectedPaths"
+  },
+  { "keys": "<Meta+Shift+C>",
+    "modes": "widget",
+    "when": "window.isScope('terminal.outline.tree')",
+    "action": "OutlinePane.CopyOutput"
+  },
+  { "keys": "<Meta+Shift+C>",
+    "modes": "local, remote",
+    "action": "Text.Copy"
+  },
+  { "keys": "<Meta+Shift+Down>",
+    "modes": "remote",
+    "script": "() => { window.activeText.scrollTop += 1 }"
+  },
+  { "keys": "<Meta+Shift+End>",
+    "modes": "normal, local",
+    "action": "Text.SelectToDocumentEnd"
+  },
+  { "keys": "<Meta+Shift+End>",
+    "modes": "remote",
+    "script": "() => { let text = window.activeText; text.scrollTop = text.visibleLineCount }"
+  },
+  { "keys": "<Meta+Shift+F>",
+    "modes": "normal, widget",
+    "when": "window.isScope('editor.*')",
+    "action": "Text.FindInFiles"
+  },
+  { "keys": "<Meta+Shift+F3>",
+    "modes": "normal, local, remote",
+    "action": "Text.FindPreviousSelection"
+  },
+  { "keys": "<Meta+Shift+H>",
+    "modes": "normal, widget",
+    "when": "window.isScope('editor.*')",
+    "action": "Text.ReplaceInFiles"
+  },
+  { "keys": "<Meta+Shift+Home>",
+    "modes": "normal, local",
+    "action": "Text.SelectToDocumentStart"
+  },
+  { "keys": "<Meta+Shift+Home>",
+    "modes": "remote",
+    "script": "() => { window.activeText.scrollTop = 0 }"
+  },
+  { "keys": "<Meta+Shift+K>",
+    "modes": "normal, local",
+    "action": "Text.SelectWord"
+  },
+  { "keys": "<Meta+Shift+L>",
+    "modes": "normal, local",
+    "action": "Text.SelectLine"
+  },
+  { "keys": "<Meta+Shift+L>",
+    "modes": "local, remote",
+    "when": "window.isScope('terminal.view.text')",
+    "action": "Terminal.ClearScrollback"
+  },
+  { "keys": "<Meta+Shift+M>",
+    "when": "window.isScope('terminal.*')",
+    "action": "Terminal.SyncInput"
+  },
+  { "keys": "<Meta+Shift+N>",
+    "action": "Application.NewWindow"
+  },
+  { "keys": "<Meta+Shift+N>",
+    "modes": "widget",
+    "when": "window.isScope('terminal.filer.view.tree')",
+    "action": "FilerPane.MakeDirectory"
+  },
+  { "keys": "<Meta+Shift+N>",
+    "modes": "widget",
+    "when": "window.isScope('terminal.filer.view.tree')",
+    "action": "FilerPane.NewDirectory"
+  },
+  { "keys": "<Meta+Shift+Left>",
+    "modes": "normal, local",
+    "action": "Text.SelectToPreviousWordStart"
+  },
+  { "keys": "<Meta+Shift+Left>",
+    "modes": "remote, local",
+    "action": "Terminal.MoveToPreviousCommand"
+  },
+  { "keys": "<Meta+Shift+P>",
+    "modes": "normal, local",
+    "action": "Text.SelectParagraph"
+  },
+  { "keys": "<Meta+Shift+P>",
+    "modes": "widget",
+    "when": "window.isScope('terminal.filer.view.tree')",
+    "action": "FilerPane.CopySelectedPathsToTerminal"
+  },
+  { "keys": "<Meta+Shift+PgDown>",
+    "modes": "remote",
+    "script": "() => { let text = window.activeText; text.scrollTop += text.screenLineCapacity }"
+  },
+  { "keys": "<Meta+Shift+PgUp>",
+    "modes": "remote",
+    "script": "() => { let text = window.activeText; text.scrollTop -= text.screenLineCapacity }"
+  },
+  { "keys": "<Meta+Shift+Q>",
+    "modes": "local, remote",
+    "action": "Window.Close"
+  },
+  { "keys": "<Meta+Shift+R>",
+    "modes": "normal, widget",
+    "when": "window.isScope('editor.*')",
+    "action": "Tool.RunToolDialog"
+  },
+  { "keys": "<Meta+Shift+Right>",
+    "modes": "normal, local",
+    "action": "Text.SelectToNextWordStart"
+  },
+  { "keys": "<Meta+Shift+Right>",
+    "modes": "remote, local",
+    "action": "Terminal.MoveToNextCommand"
+  },
+  { "keys": "<Meta+Shift+S>",
+    "modes": "normal, command",
+    "when": "window.isScope('editor.*')",
+    "action": "Editor.SaveAs"
+  },
+  { "keys": "<Meta+Shift+S>",
+    "modes": "local, remote",
+    "when": "window.isScope('terminal.*')",
+    "action": "Terminal.SaveSelectionAs"
+  },
+  { "keys": "<Meta+Shift+T>",
+    "action": "Window.ReopenClosedView"
+  },
+  { "keys": "<Meta+Shift+U>",
+    "when": "window.isScope('terminal.*')",
+    "action": "Terminal.ManageTunnels"
+  },
+  { "keys": "<Meta+Shift+Up>",
+    "modes": "remote",
+    "script": "() => { window.activeText.scrollTop -= 1 }"
+  },
+  { "keys": "<Meta+Shift+V>",
+    "modes": "local, remote",
+    "action": "Text.Paste"
+  },
+  { "keys": "<Meta+Shift+W>",
+    "modes": "local, remote",
+    "action": "Window.CloseActiveView"
+  },
+  { "keys": "<Meta+Shift+X>",
+    "modes": "local, remote",
+    "action": "Terminal.PasteSelectedText"
+  },
+  { "keys": "<Meta+Shift+Z>",
+    "modes": "normal, command",
+    "action": "Text.Redo"
+  },
+  { "keys": "<Meta+Shift+[>",
+    "modes": "normal, local",
+    "action": "Text.SelectPair"
+  },
+  { "keys": "<Meta+Shift+]>",
+    "modes": "normal, local",
+    "action": "Text.SelectPair"
+  },
+  { "keys": "<Shift+Backspace>",
+    "modes": "normal",
+    "action": "Text.DeleteLineToStart"
+  },
+  { "keys": "<Shift+Del>",
+    "modes": "normal",
+    "action": "Text.DeleteLineToEnd"
+  },
+  { "keys": "<Shift+Del>",
+    "modes": "local, remote",
+    "action": "Text.Copy"
+  },
+  { "keys": "<Shift+Del>",
+    "modes": "remote",
+    "when": "window.activeText.isAutoCompleteVisible() && window.activeText.isAutoCompletePreselected()",
+    "script": "() => { window.activeText.discardAutoComplete() }"
+  },
+  { "keys": "<Shift+Down>",
+    "modes": "normal, local",
+    "action": "Text.SelectToNextLine"
+  },
+  { "keys": "<Shift+End>",
+    "modes": "normal, local",
+    "action": "Text.SelectToLineEnd"
+  },
+  { "keys": "<Shift+Enter>",
+    "modes": "widget",
+    "when": "window.isScope('terminal.outline.tree')",
+    "action": "OutlinePane.RepeatedlyExecute"
+  },
+  { "keys": "<Shift+F3>",
+    "modes": "normal, local, widget",
+    "action": "Text.FindPrevious"
+  },
+  { "keys": "<Shift+Home>",
+    "modes": "normal, local",
+    "action": "Text.SelectToLineHome"
+  },
+  { "keys": "<Shift+Ins>",
+    "modes": "normal, command, local, remote",
+    "action": "Text.Paste"
+  },
+  { "keys": "<Shift+Left>",
+    "modes": "normal, local",
+    "action": "Text.SelectToPreviousChar"
+  },
+  { "keys": "<Shift+PgDown>",
+    "modes": "normal, local",
+    "action": "Text.SelectToNextPage"
+  },
+  { "keys": "<Shift+PgUp>",
+    "modes": "normal, local",
+    "action": "Text.SelectToPreviousPage"
+  },
+  { "keys": "<Shift+Right>",
+    "modes": "normal, local",
+    "action": "Text.SelectToNextChar"
+  },
+  { "keys": "<Shift+Tab>",
+    "modes": "normal",
+    "action": "Text.DecreaseLineIndent"
+  },
+  { "keys": "<Shift+Tab>",
+    "modes": "normal",
+    "when": "window.activeText.hasPreviousSnippetStop()",
+    "script": "() => { let text = window.activeText; text.cancelAutoComplete(); text.jumpToPreviousSnippetStop() }"
+  },
+  { "keys": "<Shift+Up>",
+    "modes": "normal, local",
+    "action": "Text.SelectToPreviousLine"
+  }
+]

@@ -1,0 +1,20 @@
+# 构建产物与缓存
+/target
+/.toolchain/
+
+# 环境/编辑器
+/.cargo/local
+*.local.toml
+
+# 备份文件
+*.bak
+wind.keymaps.bak
+
+# 系统
+Thumbs.db
+.DS_Store
+
+# IDE
+.idea/
+.vscode/
+*.swp

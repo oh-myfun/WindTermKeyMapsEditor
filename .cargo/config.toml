@@ -1,0 +1,17 @@
+# Cargo 配置
+#
+# 技术栈：Rust 1.98 + eframe/egui，本地 gnullvm 目标（内置 rust-lld + crt-static，
+# 无需 MSVC/mingw，产出单文件 exe）。CI 使用 windows-latest 的默认 MSVC 目标，
+# 本节 [target.x86_64-pc-windows-gnullvm] 只对 gnullvm 生效，不影响 MSVC。
+#
+# 注意：曾尝试国内 rsproxy 稀疏索引镜像，但其仅 dl 可用、索引条目 404，
+# 故回归官方 crates.io 稀疏索引（经实测 download 与解析均正常）。
+
+[target.x86_64-pc-windows-gnullvm]
+rustflags = [
+    "-C", "linker=rust-lld",
+    "-C", "target-feature=+crt-static",
+    # gnullvm 自带的 self-contained 仅含少量导入库，GUI 栈还需完整的 Windows 导入库，
+    # 此处指向解压的 mingw-w64(gNU rust-mingw) 导入库目录。
+    "-C", "link-arg=-Le:/Project/WindTermKeyMapsEditor/.toolchain/mingw-gnu-libs",
+]
