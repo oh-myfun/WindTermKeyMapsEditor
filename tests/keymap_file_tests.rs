@@ -77,3 +77,31 @@ fn every_entry_has_keys_and_modes() {
         "真实文件每条都应有非空 keys"
     );
 }
+
+#[test]
+fn every_action_has_chinese_description() {
+    use windterm_keymaps_editor::model::action_description;
+    let f = read_keymap(&sample_path()).unwrap();
+    let names: Vec<&str> = f
+        .entries
+        .iter()
+        .filter_map(|e| e.action.as_deref())
+        .collect();
+    assert!(!names.is_empty());
+    for &name in &names {
+        let desc = action_description(name);
+        assert_ne!(
+            desc, name,
+            "动作 {name} 应有中文描述（或至少区别于原名）"
+        );
+        assert!(!desc.trim().is_empty());
+    }
+}
+
+#[test]
+fn action_description_falls_back_on_unknown() {
+    use windterm_keymaps_editor::model::action_description;
+    assert_eq!(action_description("No.Such.Action"), "No.Such.Action");
+    assert_ne!(action_description("Text.Find"), "Text.Find");
+    assert_ne!(action_description("Window.Close"), "Window.Close");
+}

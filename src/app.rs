@@ -1,14 +1,16 @@
 //! 编辑器 GUI 主逻辑（eframe/egui）。
 //!
-//! 仅做界面编排，调用 `model` 与 `io` 完成数据操作；不在此解析文件格式。
+//! 精简定位：只做三件事——打开快捷键配置文件、以「操作名 + 中文描述 + 快捷键」三列表格
+//! 展示、点击“快捷键”一栏即可修改该快捷键。不再编辑 modes/动作/脚本，也不做增删。
+//! 仅做界面编排，调用 `model` 与 `io` 完成数据操作。
 
 use std::path::{Path, PathBuf};
 
 use eframe::egui::{self, Color32, FontData, FontDefinitions, FontFamily, RichText};
 
-use crate::i18n::{EditRole, T};
-use crate::io::{create_backup, read_keymap, save_as, write_keymap};
-use crate::model::KeymapFile;
+use crate::i18n::T;
+use crate::io::{create_backup, read_keymap, write_keymap};
+use crate::model::{action_description, KeymapFile};
 
 type Msg = (MsgKind, String);
 
@@ -20,14 +22,11 @@ pub enum MsgKind {
     Error,
 }
 
+/// 待设置的快捷键草稿：仅修改一条绑定的 keys。
 #[derive(Debug, Clone)]
-pub struct EditorDraft {
+pub struct KeysDraft {
     pub index: usize,
     pub keys: String,
-    pub modes: String,
-    pub role: EditRole,
-    pub action: String,
-    pub script: String,
 }
 
 #[derive(Debug)]
@@ -42,16 +41,11 @@ pub struct EditorApp {
     pub path: Option<PathBuf>,
     pub dirty: bool,
 
-    pub filter: String,
-    pub kind_filter: u8, // 0=全部 1=仅Action 2=仅Script
-    pub mode_filter: Option<&'static str>,
-
     pub selected: Option<usize>,
-    pub editor: Option<EditorDraft>,
+    pub keys_edit: Option<KeysDraft>,
     pub confirm: Option<Confirm>,
 
     pub msg: Option<Msg>,
-    pub open_path_input: String,
 }
 
 impl EditorApp {
@@ -60,14 +54,10 @@ impl EditorApp {
             file: KeymapFile::default(),
             path: None,
             dirty: false,
-            filter: String::new(),
-            kind_filter: 0,
-            mode_filter: None,
             selected: None,
-            editor: None,
+            keys_edit: None,
             confirm: None,
             msg: None,
-            open_path_input: String::new(),
         }
     }
 
@@ -83,9 +73,11 @@ impl EditorApp {
                 self.path = Some(path.to_path_buf());
                 self.dirty = false;
                 self.selected = None;
-                self.editor = None;
-                self.open_path_input = path.display().to_string();
-                let name = path.file_name().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+                self.keys_edit = None;
+                let name = path
+                    .file_name()
+                    .map(|s| s.to_string_lossy().into_owned())
+                    .unwrap_or_default();
                 self.set_msg(MsgKind::Success, format!("{}：{}", T.msg_opened, name));
             }
             Err(e) => self.set_msg(MsgKind::Error, e.to_string()),
@@ -116,17 +108,6 @@ impl EditorApp {
         }
     }
 
-    pub fn save_as_path(&mut self, path: &Path) {
-        match save_as(path, &self.file) {
-            Ok(()) => {
-                self.path = Some(path.to_path_buf());
-                self.dirty = false;
-                self.set_msg(MsgKind::Success, format!("{}：{}", T.msg_saved, path.display()));
-            }
-            Err(e) => self.set_msg(MsgKind::Error, e.to_string()),
-        }
-    }
-
     pub fn make_backup(&mut self) {
         let Some(path) = self.path.clone() else {
             self.set_msg(MsgKind::Error, T.msg_need_file.to_string());
@@ -138,80 +119,23 @@ impl EditorApp {
         }
     }
 
-    // ---------- 编辑对话框 ----------
-    pub fn begin_edit(&mut self, index: usize) {
+    // ---------- 修改快捷键 ----------
+    pub fn begin_keys_edit(&mut self, index: usize) {
         let Some(e) = self.file.entries.get(index).cloned() else {
             return;
         };
-        let role = if e.script.is_some() { EditRole::Script } else { EditRole::Action };
-        self.editor = Some(EditorDraft {
+        self.keys_edit = Some(KeysDraft {
             index,
-            keys: e.keys.clone(),
-            modes: e.modes.clone(),
-            role,
-            action: e.action.unwrap_or_default(),
-            script: e.script.unwrap_or_default(),
+            keys: e.keys,
         });
     }
 
-    fn apply_edit(&mut self, draft: &EditorDraft) {
-        let Some(e) = self.file.entries.get_mut(draft.index) else {
+    fn apply_keys_edit(&mut self, d: &KeysDraft) {
+        let Some(e) = self.file.entries.get_mut(d.index) else {
             return;
         };
-        e.keys = draft.keys.clone();
-        e.modes = draft.modes.clone();
-        match draft.role {
-            EditRole::Action => {
-                e.action = Some(draft.action.clone());
-                e.script = None;
-            }
-            EditRole::Script => {
-                e.action = None;
-                e.script = Some(draft.script.clone());
-            }
-        }
+        e.keys = d.keys.clone();
         self.dirty = true;
-    }
-
-    // ---------- 过滤 ----------
-    fn passes(&self, index: usize) -> bool {
-        let Some(e) = self.file.entries.get(index) else {
-            return false;
-        };
-        let q = self.filter.trim();
-        if !q.is_empty() {
-            let lq = q.to_lowercase();
-            let hit = e.keys.to_lowercase().contains(&lq)
-                || e.modes.to_lowercase().contains(&lq)
-                || e.target_preview(usize::MAX).to_lowercase().contains(&lq);
-            if !hit {
-                return false;
-            }
-        }
-        match self.kind_filter {
-            1 => {
-                if e.action.is_none() {
-                    return false;
-                }
-            }
-            2 => {
-                if e.script.is_none() {
-                    return false;
-                }
-            }
-            _ => {}
-        }
-        if let Some(m) = self.mode_filter {
-            let tokens: Vec<&str> = e.modes.split(',').map(|x| x.trim()).collect();
-            if !tokens.iter().any(|t| *t == m) {
-                return false;
-            }
-        }
-        true
-    }
-
-    fn visible_indices(&self) -> Vec<usize> {
-        (0..self.file.len()).filter(|&i| self.passes(i)).collect()
     }
 }
 
@@ -226,7 +150,7 @@ impl eframe::App for EditorApp {
         // 关闭拦截：存在未保存修改时先弹确认
         let close_req = ctx.input(|i| i.viewport().close_requested());
         if close_req {
-            if self.editor.is_none() {
+            if self.keys_edit.is_none() {
                 if self.dirty && self.confirm.is_none() {
                     self.confirm = Some(Confirm::UnsavedClose);
                     ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
@@ -247,32 +171,28 @@ impl eframe::App for EditorApp {
                 i.modifiers.command && i.key_pressed(egui::Key::S),
             )
         });
-        if ctrl_o && self.editor.is_none() && self.confirm.is_none() {
+        if ctrl_o && self.keys_edit.is_none() && self.confirm.is_none() {
             self.pick_open_dialog();
         }
-        if ctrl_s && self.editor.is_none() {
+        if ctrl_s && self.keys_edit.is_none() {
             self.try_save();
         }
 
         egui::TopBottomPanel::top("toolbar").show(ctx, |ui| self.ui_toolbar(ui));
-        if self.editor.is_some() {
-            egui::CentralPanel::default().show(ctx, |ui| self.ui_table(ui));
-        } else {
-            egui::CentralPanel::default().show(ctx, |ui| self.ui_table(ui));
-        }
+        egui::CentralPanel::default().show(ctx, |ui| self.ui_table(ui));
         egui::TopBottomPanel::bottom("statusbar").show(ctx, |ui| self.ui_statusbar(ui));
 
-        // 编辑对话框
-        if let Some(mut draft) = self.editor.clone() {
+        // 设置快捷键对话框
+        if let Some(mut draft) = self.keys_edit.clone() {
             let mut keep = true;
-            egui::Window::new(T.editor_title)
-                .id(egui::Id::new("editor_win"))
+            egui::Window::new(T.ed_keys_title)
+                .id(egui::Id::new("keys_win"))
                 .collapsible(false)
                 .resizable(false)
                 .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
-                .show(ctx, |ui| keep = self.ui_editor(ui, &mut draft));
+                .show(ctx, |ui| keep = self.ui_keys_edit(ui, &mut draft));
             if keep {
-                self.editor = Some(draft);
+                self.keys_edit = Some(draft);
             }
         }
 
@@ -306,10 +226,6 @@ impl EditorApp {
             if ui.add(egui::Button::new(T.save)).on_hover_text(T.save_tip).clicked() {
                 self.try_save();
             }
-            if ui.add(egui::Button::new(T.save_as)).clicked() {
-                self.pick_save_as_dialog();
-            }
-            ui.separator();
             if ui.add(egui::Button::new(T.backup)).on_hover_text(T.backup_tip).clicked() {
                 self.make_backup();
             }
@@ -323,106 +239,46 @@ impl EditorApp {
                 ui.label(RichText::new(T.stat_dirty).strong().color(Color32::LIGHT_YELLOW));
             }
         });
-        ui.add_space(4.0);
-        ui.horizontal_wrapped(|ui| {
-            ui.add(
-                egui::TextEdit::singleline(&mut self.filter)
-                    .hint_text(T.filter_placeholder)
-                    .desired_width(320.0),
-            );
-            if !self.filter.is_empty() && ui.button(T.clear_filter).clicked() {
-                self.filter.clear();
-            }
-            ui.separator();
-            ui.label(T.select_all_kind);
-            for (v, label) in [(0u8, "全部"), (1, "Action"), (2, "Script")] {
-                ui.selectable_value(&mut self.kind_filter, v, label);
-            }
-            ui.separator();
-            ui.label(T.filter_modes);
-            let texts = [("全部模式", None)]
-                .into_iter()
-                .chain(crate::model::KNOWN_MODES.iter().map(|m| (*m, Some(*m))));
-            egui::ComboBox::from_id_salt("mode_filter")
-                .selected_text(self.mode_filter.unwrap_or("全部模式"))
-                .show_ui(ui, |ui| {
-                    for (label, val) in texts {
-                        ui.selectable_value(&mut self.mode_filter, val, label);
-                    }
-                });
-        });
-        ui.add_space(4.0);
-        ui.horizontal_wrapped(|ui| {
-            ui.label(RichText::new(T.open_path_hint).weak());
-            ui.add(
-                egui::TextEdit::singleline(&mut self.open_path_input)
-                    .hint_text("global\\wind.keymaps")
-                    .desired_width(320.0),
-            );
-            if ui.button(T.open_button).clicked() {
-                let p = self.open_path_input.trim().to_string();
-                if !p.is_empty() {
-                    self.open_path(Path::new(&p));
-                }
-            }
-            ui.label(RichText::new(T.tip_double_click_edit).weak().italics());
-        });
         ui.add_space(6.0);
     }
 
     fn ui_table(&mut self, ui: &mut egui::Ui) {
-        let visible = self.visible_indices();
         if self.file.is_empty() {
-            ui.centered_and_justified(|ui| ui.label(RichText::new(T.msg_no_entries).weak().size(16.0)));
-            return;
-        }
-        if visible.is_empty() {
-            ui.centered_and_justified(|ui| ui.label(RichText::new("没有匹配的条目").weak()));
+            ui.centered_and_justified(|ui| {
+                ui.label(RichText::new(T.msg_no_entries).weak().size(16.0))
+            });
             return;
         }
 
-        // Enter 打开选中项编辑器
-        let enter = ui.input(|i| i.key_pressed(egui::Key::Enter));
-        if enter && self.editor.is_none() {
-            if let Some(i) = self.selected {
-                if visible.contains(&i) {
-                    self.begin_edit(i);
-                }
-            }
-        }
-
-        let mut pending_edit: Option<usize> = None;
         egui::ScrollArea::vertical()
             .auto_shrink([false, false])
             .show(ui, |ui| {
                 egui::Grid::new("keymap_grid")
-                    .num_columns(5)
+                    .num_columns(3)
                     .striped(true)
-                    .spacing([14.0, 4.0])
+                    .spacing([18.0, 4.0])
                     .show(ui, |ui| {
-                        for h in [
-                            T.col_index,
-                            T.col_keys,
-                            T.col_modes,
-                            T.col_kind,
-                            T.col_target,
-                        ] {
+                        for h in [T.col_action, T.col_desc, T.col_keys] {
                             ui.strong(RichText::new(h).size(12.5));
                         }
                         ui.end_row();
 
-                        for &idx in &visible {
+                        for idx in 0..self.file.len() {
                             let e = &self.file.entries[idx];
                             let is_sel = self.selected == Some(idx);
 
-                            let row_resp = ui
-                                .selectable_label(is_sel, format!("{}", idx + 1))
-                                .on_hover_text(if is_sel { "已选中，双击编辑" } else { "点击选中" });
-                            if row_resp.double_clicked() {
-                                pending_edit = Some(idx);
-                            }
-                            if row_resp.clicked() {
-                                self.selected = Some(idx);
+                            match &e.action {
+                                Some(a) => {
+                                    ui.label(RichText::new(a).monospace().color(Color32::from_rgb(140, 200, 240)));
+                                    ui.label(RichText::new(action_description(a)));
+                                }
+                                None => {
+                                    ui.label(
+                                        RichText::new(T.op_script).color(Color32::from_rgb(240, 170, 90)),
+                                    );
+                                    let preview = e.target_preview(60);
+                                    ui.label(RichText::new(preview).weak());
+                                }
                             }
 
                             let keys_color = if e.keys.trim().is_empty() {
@@ -430,81 +286,38 @@ impl EditorApp {
                             } else {
                                 Color32::from_rgb(180, 210, 130)
                             };
-                            ui.label(RichText::new(&e.keys).monospace().color(keys_color));
-
-                            ui.label(RichText::new(&e.modes).color(Color32::from_rgb(160, 190, 230)));
-
-                            let kind = e.kind();
-                            let kind_label = match kind {
-                                "action" => T.kind_action,
-                                "script" => T.kind_script,
-                                _ => T.kind_empty,
-                            };
-                            let kind_color = match kind {
-                                "action" => Color32::from_rgb(120, 220, 160),
-                                "script" => Color32::from_rgb(240, 170, 90),
-                                _ => Color32::GRAY,
-                            };
-                            ui.label(RichText::new(kind_label).color(kind_color));
-
-                            let preview = e.target_preview(80);
-                            ui.label(RichText::new(preview).weak());
+                            let row = ui
+                                .selectable_label(
+                                    is_sel,
+                                    RichText::new(&e.keys).monospace().color(keys_color),
+                                )
+                                .on_hover_text(T.keys_cell_hint);
+                            if row.clicked() {
+                                self.selected = Some(idx);
+                                self.begin_keys_edit(idx);
+                            }
                             ui.end_row();
                         }
                     });
             });
-        if let Some(i) = pending_edit {
-            self.begin_edit(i);
-        }
     }
 
-    fn ui_editor(&mut self, ui: &mut egui::Ui, d: &mut EditorDraft) -> bool {
+    fn ui_keys_edit(&mut self, ui: &mut egui::Ui, d: &mut KeysDraft) -> bool {
         let mut keep = true;
         ui.add_space(4.0);
-        egui::Grid::new("edit_grid").num_columns(2).spacing([12.0, 8.0]).show(ui, |ui| {
-            ui.label(T.ed_keys);
-            ui.add(egui::TextEdit::singleline(&mut d.keys).hint_text("<Ctrl+...>").desired_width(360.0));
-            ui.end_row();
-
-            ui.label(T.ed_modes);
-            ui.add(egui::TextEdit::singleline(&mut d.modes).hint_text("normal, local").desired_width(360.0));
-            ui.end_row();
-        });
-        ui.add_space(2.0);
-        ui.horizontal_wrapped(|ui| {
-            ui.label(RichText::new(T.ed_mode_chips).weak());
-            for m in crate::model::KNOWN_MODES.iter().take(6) {
-                if ui.small_button(*m).clicked() {
-                    d.modes = m.to_string();
-                }
-            }
-        });
-        ui.add_space(4.0);
+        ui.label(T.ed_keys);
+        ui.add(
+            egui::TextEdit::singleline(&mut d.keys)
+                .hint_text(T.ed_keys_placeholder)
+                .desired_width(360.0),
+        );
+        ui.add_space(8.0);
         ui.horizontal(|ui| {
-            ui.label(T.ed_kind_action);
-            ui.radio_value(&mut d.role, EditRole::Action, "Action");
-            ui.radio_value(&mut d.role, EditRole::Script, "Script");
-        });
-        ui.add_space(4.0);
-        match d.role {
-            EditRole::Action => {
-                ui.label(T.ed_action);
-                ui.add(egui::TextEdit::singleline(&mut d.action).hint_text("Text.Find").desired_width(400.0));
-            }
-            EditRole::Script => {
-                ui.label(T.ed_script);
-                ui.add(
-                    egui::TextEdit::multiline(&mut d.script)
-                        .code_editor()
-                        .desired_rows(9)
-                        .desired_width(420.0),
-                );
-            }
-        }
-        ui.add_space(6.0);
-        ui.horizontal(|ui| {
-            if ui.button(RichText::new(T.ok).strong().color(Color32::from_rgb(120,220,160))).clicked() {
-                self.apply_edit(d);
+            if ui
+                .button(RichText::new(T.ok).strong().color(Color32::from_rgb(120, 220, 160)))
+                .clicked()
+            {
+                self.apply_keys_edit(d);
                 keep = false;
             }
             if ui.button(T.cancel).clicked() {
@@ -512,13 +325,12 @@ impl EditorApp {
             }
         });
         ui.add_space(4.0);
-        ui.label(RichText::new(T.ed_keys_tip).weak().small());
+        ui.label(RichText::new(T.ed_keys_hint).weak().small());
         ui.add_space(2.0);
         keep
     }
 
     fn ui_confirm(&mut self, ui: &mut egui::Ui) -> bool {
-        // 返回 true 表示关闭 confirm 弹层（已处理内部动作）
         let mut close = false;
         let c = self.confirm.take();
         if let Some(c) = c {
@@ -527,7 +339,9 @@ impl EditorApp {
                     ui.label(T.msg_validation_issues);
                     egui::ScrollArea::vertical().max_height(120.0).show(ui, |ui| {
                         for it in &issues {
-                            ui.label(RichText::new(format!(" • {it}")).color(Color32::from_rgb(240,170,90)));
+                            ui.label(
+                                RichText::new(format!(" • {it}")).color(Color32::from_rgb(240, 170, 90)),
+                            );
                         }
                     });
                     ui.add_space(6.0);
@@ -548,7 +362,6 @@ impl EditorApp {
                     ui.label(T.msg_unsaved_changes_detail);
                     ui.horizontal(|ui| {
                         if ui.button(T.btn_discard).clicked() {
-                            // 丢弃并关闭
                             self.dirty = false;
                             ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
                             close = true;
@@ -559,7 +372,8 @@ impl EditorApp {
                     });
                 }
                 Confirm::OpenReplace { path } => {
-                    ui.label(format!("{}，打开 {}？", T.msg_unsaved_changes, path.display()));
+                    ui.label(T.msg_open_replace);
+                    ui.label(RichText::new(path.display().to_string()).weak());
                     ui.horizontal(|ui| {
                         if ui.button(T.btn_discard).clicked() {
                             self.open_path(&path);
@@ -578,16 +392,6 @@ impl EditorApp {
     fn ui_statusbar(&mut self, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
             ui.label(format!("{}: {}", T.stat_total, self.file.len()));
-            ui.separator();
-            ui.label(format!("{}: {}", T.stat_visible, self.visible_indices().len()));
-            ui.separator();
-            let issues = self.file.validate().len();
-            let (txt, color) = if issues == 0 {
-                (format!("{}: 0", T.stat_issues), Color32::from_rgb(120, 220, 160))
-            } else {
-                (format!("{}: {}", T.stat_issues, issues), Color32::from_rgb(240, 170, 90))
-            };
-            ui.label(RichText::new(txt).color(color));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if let Some((kind, text)) = &self.msg {
                     let color = match kind {
@@ -602,45 +406,33 @@ impl EditorApp {
         });
     }
 
-    fn pick_open_dialog(&mut self) {
-        if self.dirty {
-            if let Some(p) = rfd::FileDialog::new()
-                .add_filter("WindTerm keymaps", &["json"]).pick_file()
-            {
-                self.confirm = Some(Confirm::OpenReplace { path: p });
-            }
-        } else {
-            if let Some(p) = rfd::FileDialog::new()
-                .add_filter("WindTerm keymaps", &["json"]).pick_file()
-            {
-                self.open_path(&p);
-            }
-        }
+    /// 匹配真实文件后缀：wind.keymaps 扩展名是 keymaps，并非 json。
+    fn file_dialog() -> rfd::FileDialog {
+        rfd::FileDialog::new()
+            .add_filter("WindTerm 配置", &["keymaps", "json", "txt", "conf", "variables"])
+            .add_filter("所有文件", &["*"])
     }
 
-    fn pick_save_as_dialog(&mut self) {
-        if let Some(p) = rfd::FileDialog::new()
-            .add_filter("WindTerm keymaps", &["json"])
-            .set_file_name("wind.keymaps")
-            .save_file()
-        {
-            self.save_as_path(&p);
+    fn pick_open_dialog(&mut self) {
+        if let Some(p) = Self::file_dialog().pick_file() {
+            if self.dirty {
+                self.confirm = Some(Confirm::OpenReplace { path: p });
+            } else {
+                self.open_path(&p);
+            }
         }
     }
 }
 
 // 供 main 调用的辅助：自动定位程序旁 global/wind.keymaps
 pub fn auto_locate_keymaps(exe_dir: &Path) -> Option<PathBuf> {
-    let candidates = [
-        exe_dir.join("global/wind.keymaps"),
-        exe_dir.join("wind.keymaps"),
-    ];
+    let candidates = [exe_dir.join("global/wind.keymaps"), exe_dir.join("wind.keymaps")];
     candidates.into_iter().find(|p| p.exists())
 }
 
 /// 无界面编辑自检：驱动真实编辑器逻辑，在目标 `wind.keymaps` 上完成
-/// 「打开→定位可编辑条→编辑(改键/模式/Action↔Script)→保存→重载核对持久化→过滤→恢复」闭环。
-/// 返回 (日志行, 退出码)。保存直接走底层 write_keymap，跳过 GUI 的交互确认弹层。
+/// 「打开→定位可编辑条→改快捷键→保存→重载核对持久化(仅 keys 变)→恢复」闭环。
+/// 返回 (日志行, 退出码)。保存直接走底层 write_keymap，跳过 GUI 交互确认弹层。
 pub fn run_edittest(path: &Path) -> (Vec<String>, i32) {
     macro_rules! log_fail {
         ($log:expr, $msg:expr) => {{
@@ -659,14 +451,21 @@ pub fn run_edittest(path: &Path) -> (Vec<String>, i32) {
     }
     log.push(format!("[OK] 打开 {} 条", original.len()));
 
-    // 定位一条 keys 非空且带 action 的条目，便于校验「Action→Script」的类型切换
     let Some(idx) = original
         .entries
         .iter()
-        .position(|e| !e.keys.trim().is_empty() && e.action.is_some())
+        .position(|e| e.action.is_some())
     else {
-        log_fail!(log, "未找到可编辑的 Action 条目".to_string());
+        log_fail!(log, "未找到带 Action 的条目".to_string());
     };
+
+    // 中文描述字典：抽查已知/未知动作
+    let zh = action_description("Text.Find");
+    let fallback = action_description("No.Such.Action");
+    if zh == "Text.Find" || fallback != "No.Such.Action" {
+        log_fail!(log, format!("action_description 异常：zh={zh:?} fallback={fallback:?}"));
+    }
+    log.push(format!("[OK] 中文描述：Text.Find → {zh}（未知动作回退原名）"));
 
     let mut app = EditorApp::new();
     app.open_path(path);
@@ -674,23 +473,19 @@ pub fn run_edittest(path: &Path) -> (Vec<String>, i32) {
         log_fail!(log, format!("应用打开失败：{:?}", app.msg));
     }
 
-    // 1) 编辑：改 keys/modes，并把 Action 切换为 Script
-    app.begin_edit(idx);
-    let Some(mut d) = app.editor.clone() else {
-        log_fail!(log, "begin_edit 未进入编辑态".to_string());
+    // 1) 修改该 Action 条的快捷键（keys）
+    app.begin_keys_edit(idx);
+    let Some(mut d) = app.keys_edit.clone() else {
+        log_fail!(log, "begin_keys_edit 未进入编辑态".to_string());
     };
     d.keys = "<Ctrl+F11>e2e".to_string();
-    d.modes = "normal, command".to_string();
-    d.role = EditRole::Script;
-    d.action.clear();
-    d.script = "(c) => { print(\"e2e\"); }".to_string();
-    app.apply_edit(&d);
+    app.apply_keys_edit(&d);
     if !app.dirty {
-        log_fail!(log, "apply_edit 未标记 dirty".to_string());
+        log_fail!(log, "apply_keys_edit 未标记 dirty".to_string());
     }
-    log.push("[OK] 编辑生效（keys/modes 已改，Action→Script 已切换）".into());
+    log.push("[OK] 已把该条目 keys 改为 <Ctrl+F11>e2e".into());
 
-    // 2) 保存 → 重载核对持久化
+    // 2) 保存 → 重载核对
     if let Err(e) = write_keymap(path, &app.file) {
         log_fail!(log, format!("保存失败：{e}"));
     }
@@ -699,49 +494,15 @@ pub fn run_edittest(path: &Path) -> (Vec<String>, i32) {
         Err(e) => log_fail!(log, format!("重载失败：{e}")),
     };
     let e = &reloaded.entries[idx];
-    if e.keys != "<Ctrl+F11>e2e"
-        || e.modes != "normal, command"
-        || e.action.is_some()
-        || e.script.as_deref() != Some("(c) => { print(\"e2e\"); }")
-    {
-        log_fail!(log, "保存后重载内容与编辑不一致".to_string());
+    if e.keys != "<Ctrl+F11>e2e" {
+        log_fail!(log, "保存后重载 keys 与编辑不一致".to_string());
     }
-    log.push("[OK] 保存→重载：修改已正确持久化".into());
+    if &e.action != &original.entries[idx].action || &e.script != &original.entries[idx].script {
+        log_fail!(log, "修改 keys 不应改动 action/script".to_string());
+    }
+    log.push("[OK] 保存→重载：仅 keys 变更且已持久化，action/script 未受影响".into());
 
-    // 3) 过滤：类型与文本过滤应如实生效
-    let total = app.visible_indices().len();
-    app.kind_filter = 1;
-    let n_action = app.visible_indices().len();
-    let expect_action = reloaded.entries.iter().filter(|e| e.action.is_some()).count();
-    app.kind_filter = 2;
-    let n_script = app.visible_indices().len();
-    let expect_script = reloaded.entries.iter().filter(|e| e.script.is_some()).count();
-    app.kind_filter = 0;
-    if n_action != expect_action || n_script != expect_script {
-        log_fail!(
-            log,
-            format!("过滤计数异常：Action {n_action}≠{expect_action}，Script {n_script}≠{expect_script}")
-        );
-    }
-    app.filter = "Text.Find".to_string();
-    let n_search = app.visible_indices().len();
-    let expect_search = reloaded
-        .entries
-        .iter()
-        .filter(|e| e.target_preview(usize::MAX).contains("Text.Find"))
-        .count();
-    app.filter.clear();
-    if n_search != expect_search {
-        log_fail!(log, format!("文本过滤计数异常：{n_search}≠{expect_search}"));
-    }
-    if app.visible_indices().len() != total {
-        log_fail!(log, "清除过滤后计数未恢复".to_string());
-    }
-    log.push(format!(
-        "[OK] 过滤：总数 {total} / Action {n_action} / Script {n_script} / 搜\"Text.Find\" {n_search}"
-    ));
-
-    // 4) 恢复原状并核对
+    // 3) 恢复原状并核对
     if let Err(e) = write_keymap(path, &original) {
         log_fail!(log, format!("恢复失败：{e}"));
     }
