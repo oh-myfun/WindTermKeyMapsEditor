@@ -29,6 +29,21 @@ pub struct KeysDraft {
     pub keys: String,
 }
 
+/// 可排序的列。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SortCol {
+    Action,
+    Desc,
+    Keys,
+}
+
+/// 当前排序状态（列 + 方向）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct SortState {
+    col: SortCol,
+    asc: bool,
+}
+
 #[derive(Debug)]
 pub enum Confirm {
     SaveWithIssues { issues: Vec<String> },
@@ -40,6 +55,9 @@ pub struct EditorApp {
     pub file: KeymapFile,
     pub path: Option<PathBuf>,
     pub dirty: bool,
+
+    search: String,
+    sort: Option<SortState>,
 
     pub selected: Option<usize>,
     pub keys_edit: Option<KeysDraft>,
@@ -54,6 +72,8 @@ impl EditorApp {
             file: KeymapFile::default(),
             path: None,
             dirty: false,
+            search: String::new(),
+            sort: None,
             selected: None,
             keys_edit: None,
             confirm: None,
@@ -74,6 +94,8 @@ impl EditorApp {
                 self.dirty = false;
                 self.selected = None;
                 self.keys_edit = None;
+                self.search.clear();
+                self.sort = None;
                 let name = path
                     .file_name()
                     .map(|s| s.to_string_lossy().into_owned())
@@ -147,20 +169,19 @@ impl Default for EditorApp {
 
 impl eframe::App for EditorApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        // 关闭拦截：存在未保存修改时先弹确认
+        // 关闭拦截：存在未保存修改时先弹确认；快捷键弹窗打开时让用户先关闭弹窗。
         let close_req = ctx.input(|i| i.viewport().close_requested());
         if close_req {
-            if self.keys_edit.is_none() {
-                if self.dirty && self.confirm.is_none() {
-                    self.confirm = Some(Confirm::UnsavedClose);
-                    ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
-                } else if !(self.dirty && self.confirm.is_some()) {
-                    ctx.send_viewport_cmd(egui::ViewportCommand::Close);
-                } else {
-                    ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
-                }
-            } else {
+            if self.keys_edit.is_some() {
                 ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
+            } else if self.dirty && self.confirm.is_none() {
+                self.confirm = Some(Confirm::UnsavedClose);
+                ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
+            } else if self.dirty {
+                // 确认框已展示，保留它等待用户选择。
+                ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
+            } else {
+                ctx.send_viewport_cmd(egui::ViewportCommand::Close);
             }
         }
 
@@ -183,16 +204,17 @@ impl eframe::App for EditorApp {
         egui::TopBottomPanel::bottom("statusbar").show(ctx, |ui| self.ui_statusbar(ui));
 
         // 设置快捷键对话框
-        if let Some(mut draft) = self.keys_edit.clone() {
+        if let Some(draft) = self.keys_edit.clone() {
             let mut keep = true;
             egui::Window::new(T.ed_keys_title)
                 .id(egui::Id::new("keys_win"))
                 .collapsible(false)
                 .resizable(false)
                 .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
-                .show(ctx, |ui| keep = self.ui_keys_edit(ui, &mut draft));
-            if keep {
-                self.keys_edit = Some(draft);
+                .show(ctx, |ui| self.ui_keys_edit(ui, draft, &mut keep));
+            if !keep {
+                // 弹窗内的确定/取消已决定关闭此弹窗。
+                self.keys_edit = None;
             }
         }
 
@@ -230,6 +252,14 @@ impl EditorApp {
                 self.make_backup();
             }
             ui.separator();
+            // 搜索框：按 操作名 / 中文描述 / 快捷键 子串过滤（不区分大小写）
+            let search_box = ui.add(
+                egui::TextEdit::singleline(&mut self.search)
+                    .hint_text(T.search)
+                    .desired_width(220.0),
+            );
+            let _ = search_box.on_hover_text(T.search_tip);
+            ui.separator();
             if let Some(p) = &self.path {
                 ui.label(RichText::new(p.display().to_string()).weak().size(12.0));
             } else {
@@ -250,6 +280,14 @@ impl EditorApp {
             return;
         }
 
+        let rows = self.display_rows();
+        if rows.is_empty() {
+            ui.centered_and_justified(|ui| {
+                ui.label(RichText::new(T.no_match).weak().size(16.0))
+            });
+            return;
+        }
+
         egui::ScrollArea::vertical()
             .auto_shrink([false, false])
             .show(ui, |ui| {
@@ -258,12 +296,16 @@ impl EditorApp {
                     .striped(true)
                     .spacing([18.0, 4.0])
                     .show(ui, |ui| {
-                        for h in [T.col_action, T.col_desc, T.col_keys] {
-                            ui.strong(RichText::new(h).size(12.5));
+                        for (col, title) in [
+                            (SortCol::Action, T.col_action),
+                            (SortCol::Desc, T.col_desc),
+                            (SortCol::Keys, T.col_keys),
+                        ] {
+                            self.ui_sort_header(ui, col, title);
                         }
                         ui.end_row();
 
-                        for idx in 0..self.file.len() {
+                        for &idx in &rows {
                             let e = &self.file.entries[idx];
                             let is_sel = self.selected == Some(idx);
 
@@ -302,32 +344,106 @@ impl EditorApp {
             });
     }
 
-    fn ui_keys_edit(&mut self, ui: &mut egui::Ui, d: &mut KeysDraft) -> bool {
-        let mut keep = true;
+    /// 计算当前应显示的行（先按搜索串过滤，再按排序列排序），返回的是条目下标。
+    fn display_rows(&self) -> Vec<usize> {
+        let q = self.search.trim();
+        let mut rows: Vec<usize> = (0..self.file.len()).collect();
+        if !q.is_empty() {
+            let lower = q.to_lowercase();
+            rows.retain(|&i| self.entry_matches(&self.file.entries[i], &lower));
+        }
+        if let Some(s) = &self.sort {
+            let order = s.asc;
+            rows.sort_by(|&a, &b| {
+                let mut o = self.sort_key(s.col, a).cmp(&self.sort_key(s.col, b));
+                if !order {
+                    o = o.reverse();
+                }
+                o
+            });
+        }
+        rows
+    }
+
+    fn entry_matches(&self, e: &crate::model::KeymapEntry, lower: &str) -> bool {
+        e.keys.to_lowercase().contains(lower)
+            || e.modes.to_lowercase().contains(lower)
+            || e.action
+                .as_deref()
+                .map(|a| a.to_lowercase().contains(lower))
+                .unwrap_or(false)
+            || e.action
+                .as_deref()
+                .map(|a| action_description(a).to_lowercase().contains(lower))
+                .unwrap_or(false)
+            || e.script.as_deref().unwrap_or("").to_lowercase().contains(lower)
+    }
+
+    fn sort_key(&self, col: SortCol, idx: usize) -> String {
+        let e = &self.file.entries[idx];
+        match col {
+            SortCol::Action => e.action.clone().unwrap_or_default(),
+            SortCol::Desc => e
+                .action
+                .as_deref()
+                .map(action_description)
+                .unwrap_or_default()
+                .to_string(),
+            SortCol::Keys => e.keys.clone(),
+        }
+    }
+
+    fn ui_sort_header(&mut self, ui: &mut egui::Ui, col: SortCol, title: &str) {
+        let active = self.sort.map(|s| s.col) == Some(col);
+        let asc = self.sort.map(|s| s.asc).unwrap_or(true);
+        let arrow = if active {
+            if asc { " ▲" } else { " ▼" }
+        } else {
+            ""
+        };
+        let label = format!("{title}{arrow}");
+        let resp = ui
+            .selectable_label(active, RichText::new(label).strong().size(12.5))
+            .on_hover_text(T.sort_hint);
+        if resp.clicked() {
+            self.sort = Some(match self.sort {
+                Some(s) if s.col == col => SortState { col, asc: !s.asc },
+                _ => SortState { col, asc: true },
+            });
+        }
+    }
+
+    fn ui_keys_edit(&mut self, ui: &mut egui::Ui, mut d: KeysDraft, keep: &mut bool) {
         ui.add_space(4.0);
         ui.label(T.ed_keys);
-        ui.add(
+        let input = ui.add(
             egui::TextEdit::singleline(&mut d.keys)
                 .hint_text(T.ed_keys_placeholder)
                 .desired_width(360.0),
         );
+        // 实键录入：窗口有焦点但输入框未聚焦时，直接按键即可写入快捷键，且不被应用/系统快捷键劫持。
+        if !input.has_focus() {
+            if let Some(combo) = capture_key_combo(ui.ctx()) {
+                d.keys = combo;
+            }
+        }
         ui.add_space(8.0);
         ui.horizontal(|ui| {
             if ui
                 .button(RichText::new(T.ok).strong().color(Color32::from_rgb(120, 220, 160)))
                 .clicked()
             {
-                self.apply_keys_edit(d);
-                keep = false;
+                self.apply_keys_edit(&d);
+                *keep = false;
             }
             if ui.button(T.cancel).clicked() {
-                keep = false;
+                *keep = false;
             }
         });
         ui.add_space(4.0);
         ui.label(RichText::new(T.ed_keys_hint).weak().small());
+        ui.label(RichText::new(T.ed_keys_capture_hint).weak().small().italics());
         ui.add_space(2.0);
-        keep
     }
 
     fn ui_confirm(&mut self, ui: &mut egui::Ui) -> bool {
@@ -391,7 +507,12 @@ impl EditorApp {
 
     fn ui_statusbar(&mut self, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
-            ui.label(format!("{}: {}", T.stat_total, self.file.len()));
+            if self.search.trim().is_empty() {
+                ui.label(format!("{}: {}", T.stat_total, self.file.len()));
+            } else {
+                let n = self.display_rows().len();
+                ui.label(format!("{}: {} / {}", T.stat_total, n, self.file.len()));
+            }
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if let Some((kind, text)) = &self.msg {
                     let color = match kind {
@@ -518,6 +639,111 @@ pub fn run_edittest(path: &Path) -> (Vec<String>, i32) {
     (log, 0)
 }
 
+/// 从本帧输入事件里抓取一次“按键按下”，用于把真实按键写入快捷键。
+/// 返回形如 `<Ctrl+Shift+X>`；无修饰键的字母/数字返回裸字符；功能键返回 `<F11>` 等。
+/// 组合与 egui/WindTerm 的 `<修饰+键>` 约定对齐。
+fn capture_key_combo(ctx: &egui::Context) -> Option<String> {
+    let events = ctx.input(|i| i.events.clone());
+    for ev in &events {
+        if let egui::Event::Key {
+            key,
+            pressed: true,
+            repeat: false,
+            modifiers,
+            ..
+        } = ev
+        {
+            return combo_string(*key, modifiers);
+        }
+    }
+    None
+}
+
+/// 由“键 + 修饰键”拼出 WindTerm 风格快捷键：`<Ctrl+Shift+X>`、裸字符 `A`、功能键 `<F11>`。
+fn combo_string(key: egui::Key, modifiers: &egui::Modifiers) -> Option<String> {
+    let name = key_to_name(key);
+    let mut parts: Vec<&str> = Vec::new();
+    if modifiers.ctrl {
+        parts.push("Ctrl");
+    }
+    if modifiers.alt {
+        parts.push("Alt");
+    }
+    if modifiers.shift {
+        parts.push("Shift");
+    }
+    Some(if parts.is_empty() {
+        if is_named_key(key) {
+            format!("<{name}>")
+        } else {
+            name
+        }
+    } else {
+        parts.push(&name);
+        format!("<{}>", parts.join("+"))
+    })
+}
+
+/// 把 egui 的 Key 转成 WindTerm 风格的键名（字母/数字/F 键/方向键/标点等）。
+fn key_to_name(k: egui::Key) -> String {
+    use egui::Key::*;
+    match k {
+        l @ (A | B | C | D | E | F | G | H | I | J | K | L | M | N | O | P | Q | R | S | T | U | V | W | X | Y | Z) => {
+            format!("{l:?}")
+        }
+        Num0 | Num1 | Num2 | Num3 | Num4 | Num5 | Num6 | Num7 | Num8 | Num9 => {
+            let digit = (k as usize) - (Num0 as usize);
+            digit.to_string()
+        }
+        f @ (F1 | F2 | F3 | F4 | F5 | F6 | F7 | F8 | F9 | F10 | F11 | F12 | F13 | F14 | F15 | F16 | F17 | F18 | F19 | F20 | F21 | F22 | F23 | F24 | F25 | F26 | F27 | F28 | F29 | F30 | F31 | F32 | F33 | F34 | F35) => {
+            format!("{f:?}")
+        }
+        ArrowUp => "Up".into(),
+        ArrowDown => "Down".into(),
+        ArrowLeft => "Left".into(),
+        ArrowRight => "Right".into(),
+        Space => "Space".into(),
+        Enter => "Enter".into(),
+        Tab => "Tab".into(),
+        Escape => "Esc".into(),
+        Backspace => "Backspace".into(),
+        Delete => "Delete".into(),
+        Insert => "Insert".into(),
+        Home => "Home".into(),
+        End => "End".into(),
+        PageUp => "PageUp".into(),
+        PageDown => "PageDown".into(),
+        Colon => ":".into(),
+        Comma => ",".into(),
+        Backslash => "\\".into(),
+        Slash => "/".into(),
+        Pipe => "|".into(),
+        Questionmark => "?".into(),
+        OpenBracket => "[".into(),
+        CloseBracket => "]".into(),
+        Backtick => "`".into(),
+        Minus => "-".into(),
+        Period => ".".into(),
+        Plus => "+".into(),
+        Equals => "=".into(),
+        Semicolon => ";".into(),
+        Quote => "'".into(),
+        other => format!("{other:?}"),
+    }
+}
+
+/// 这类键即使无修饰键也应以 `<名称>` 形式书写（否则会被当成裸字符）。
+fn is_named_key(k: egui::Key) -> bool {
+    use egui::Key::*;
+    matches!(
+        k,
+        Space | Enter | Tab | Escape | Backspace | Delete | Insert | Home | End
+            | PageUp | PageDown | ArrowUp | ArrowDown | ArrowLeft | ArrowRight
+            | F1 | F2 | F3 | F4 | F5 | F6 | F7 | F8 | F9 | F10 | F11 | F12 | F13
+            | F14 | F15 | F16 | F17 | F18 | F19 | F20
+    )
+}
+
 /// egui 默认字体不含中日韩(CJK)字形，中文会显示为方块。
 /// 运行期从 Windows 系统字体目录加载一款中文字体作为回退（保持单文件、不捆绑字体文件）。
 pub fn install_chinese_fonts(ctx: &egui::Context) {
@@ -559,4 +785,120 @@ fn load_system_cjk_font() -> Option<Vec<u8>> {
         }
     }
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn mods(ctrl: bool, alt: bool, shift: bool) -> egui::Modifiers {
+        egui::Modifiers {
+            alt,
+            ctrl,
+            shift,
+            mac_cmd: false,
+            command: ctrl,
+        }
+    }
+
+    #[test]
+    fn combo_plain_modifiers_are_wrapped() {
+        assert_eq!(combo_string(egui::Key::A, &mods(true, false, false)), Some("<Ctrl+A>".into()));
+        assert_eq!(
+            combo_string(egui::Key::A, &mods(true, false, true)),
+            Some("<Ctrl+Shift+A>".into())
+        );
+        assert_eq!(
+            combo_string(egui::Key::X, &mods(false, true, false)),
+            Some("<Alt+X>".into())
+        );
+    }
+
+    #[test]
+    fn combo_bare_keys() {
+        // 无修饰键：字母/数字返回裸字符，功能/方向/空格等加尖括号。
+        assert_eq!(combo_string(egui::Key::A, &mods(false, false, false)), Some("A".into()));
+        assert_eq!(combo_string(egui::Key::Num5, &mods(false, false, false)), Some("5".into()));
+        assert_eq!(combo_string(egui::Key::F11, &mods(false, false, false)), Some("<F11>".into()));
+        assert_eq!(
+            combo_string(egui::Key::ArrowUp, &mods(false, false, false)),
+            Some("<Up>".into())
+        );
+        assert_eq!(
+            combo_string(egui::Key::Space, &mods(false, false, false)),
+            Some("<Space>".into())
+        );
+    }
+
+    #[test]
+    fn key_names_are_legible() {
+        assert_eq!(key_to_name(egui::Key::Colon), ":");
+        assert_eq!(key_to_name(egui::Key::Slash), "/");
+        assert_eq!(key_to_name(egui::Key::F12), "F12");
+        assert_eq!(key_to_name(egui::Key::Delete), "Delete");
+        assert_eq!(key_to_name(egui::Key::Escape), "Esc");
+        assert_eq!(key_to_name(egui::Key::Enter), "Enter");
+    }
+
+    fn app_with(entries: Vec<crate::model::KeymapEntry>) -> EditorApp {
+        let mut a = EditorApp::new();
+        a.file = crate::model::KeymapFile { entries };
+        a
+    }
+
+    fn ent(keys: &str, action: Option<&str>) -> crate::model::KeymapEntry {
+        crate::model::KeymapEntry {
+            keys: keys.to_string(),
+            modes: "normal".into(),
+            action: action.map(|s| s.to_string()),
+            script: None,
+        }
+    }
+
+    #[test]
+    fn display_rows_filters_by_keys_and_action() {
+        let mut a = app_with(vec![
+            ent("<Ctrl+C>", Some("Text.Copy")),
+            ent("<Ctrl+F>", Some("Text.Find")),
+            ent("i", Some("Text.InsertMode")),
+        ]);
+        a.search = "find".into();
+        assert_eq!(a.display_rows(), vec![1]);
+        a.search = "ctrl+c".into();
+        assert_eq!(a.display_rows(), vec![0]);
+        a.search = "复制".into(); // 命中中文描述（Text.Copy -> 复制）
+        assert_eq!(a.display_rows(), vec![0]);
+    }
+
+    #[test]
+    fn display_rows_sorts_by_column() {
+        let mut a = app_with(vec![
+            ent("B", Some("Text.Z")),
+            ent("A", Some("Text.A")),
+            ent("C", Some("Text.M")),
+        ]);
+        a.sort = Some(SortState { col: SortCol::Keys, asc: true });
+        assert_eq!(a.display_rows(), vec![1, 0, 2]); // A < B < C
+        a.sort = Some(SortState { col: SortCol::Keys, asc: false });
+        assert_eq!(a.display_rows(), vec![2, 0, 1]); // C > B > A
+        a.sort = Some(SortState { col: SortCol::Action, asc: true });
+        assert_eq!(a.display_rows(), vec![1, 2, 0]); // Text.A < Text.M < Text.Z
+    }
+
+    #[test]
+    fn keys_draft_dismiss_clears_edit_state() {
+        let mut a = app_with(vec![ent("<Ctrl+C>", Some("Text.Copy"))]);
+        a.begin_keys_edit(0);
+        assert!(a.keys_edit.is_some());
+        // 点“确定”会应用草稿并标记脏。
+        let draft = a.keys_edit.clone().expect("应已进入编辑态");
+        let mut applied = draft;
+        applied.keys = "<Ctrl+X>".into();
+        a.apply_keys_edit(&applied);
+        assert!(a.dirty);
+        assert_eq!(a.file.entries[0].keys, "<Ctrl+X>");
+        // 关闭弹窗 = keys_edit 置 None；此后关闭流程不再因 keys_edit 残留而拦截。
+        a.keys_edit = None;
+        assert!(a.keys_edit.is_none());
+    }
 }

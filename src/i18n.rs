@@ -15,6 +15,11 @@ pub struct L {
     pub col_keys: &'static str,
     pub keys_cell_hint: &'static str,
     pub op_script: &'static str,
+    pub sort_hint: &'static str,
+    // 搜索/过滤
+    pub search: &'static str,
+    pub search_tip: &'static str,
+    pub no_match: &'static str,
     // 状态/统计
     pub stat_total: &'static str,
     pub stat_dirty: &'static str,
@@ -24,6 +29,7 @@ pub struct L {
     pub ed_keys: &'static str,
     pub ed_keys_placeholder: &'static str,
     pub ed_keys_hint: &'static str,
+    pub ed_keys_capture_hint: &'static str,
     pub ok: &'static str,
     pub cancel: &'static str,
     // 消息
@@ -54,6 +60,10 @@ pub const T: L = L {
     col_keys: "快捷键 (Keys)",
     keys_cell_hint: "点击“快捷键”列可修改该快捷键",
     op_script: "[脚本]",
+    sort_hint: "点击列头可排序；再次点击切换升降序",
+    search: "搜索…",
+    search_tip: "按 操作名 / 中文描述 / 快捷键 过滤（不区分大小写）",
+    no_match: "没有匹配的条目",
     stat_total: "条目总数",
     stat_dirty: "未保存",
     status_no_file: "未打开文件",
@@ -61,6 +71,7 @@ pub const T: L = L {
     ed_keys: "新的快捷键（Keys）",
     ed_keys_placeholder: "<Ctrl+Shift+P>",
     ed_keys_hint: "支持 <Ctrl+...>、vim 风格正则或裸字符",
+    ed_keys_capture_hint: "点击输入框可手动输入；焦点在窗口空白处时直接按键即可录入（如 Ctrl+A）",
     ok: "确定",
     cancel: "取消",
     msg_need_file: "尚未打开任何文件",
