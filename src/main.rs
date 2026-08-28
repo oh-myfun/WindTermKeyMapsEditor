@@ -8,7 +8,7 @@
 use std::path::{Path, PathBuf};
 
 use eframe::egui;
-use windterm_keymaps_editor::app::{auto_locate_keymaps, install_chinese_fonts, EditorApp};
+use windterm_keymaps_editor::app::{auto_locate_keymaps, install_chinese_fonts, run_edittest, EditorApp};
 use windterm_keymaps_editor::i18n::T;
 use windterm_keymaps_editor::io::{read_keymap, write_keymap};
 use windterm_keymaps_editor::model::{KeymapEntry, KeymapFile};
@@ -23,6 +23,39 @@ fn main() -> eframe::Result {
             .and_then(|i| argv.get(i + 1))
             .map(PathBuf::from);
         let code = run_selftest(target.as_deref());
+        std::process::exit(code);
+    }
+
+    // 编辑自检模式：驱动真实编辑器逻辑做「打开→编辑→保存→重载→过滤→恢复」，详见 app::run_edittest。
+    if argv.iter().any(|a| a == "--edittest") {
+        let target = argv
+            .iter()
+            .position(|a| a == "--edittest")
+            .and_then(|i| argv.get(i + 1))
+            .map(PathBuf::from);
+        let path = match target {
+            Some(p) => p,
+            None => {
+                let p = std::env::current_dir()
+                    .unwrap_or_else(|_| PathBuf::from("."))
+                    .join("wind.keymaps");
+                match p.is_file() {
+                    true => p,
+                    false => {
+                        eprintln!("未指定目标文件，且当前目录无 wind.keymaps");
+                        std::process::exit(1);
+                    }
+                }
+            }
+        };
+        let (log, code) = run_edittest(&path);
+        use std::io::Write as _;
+        let text = log.join("\r\n");
+        let out_log = std::env::current_dir()
+            .unwrap_or_else(|_| PathBuf::from("."))
+            .join("edittest.log");
+        let _ = std::fs::write(&out_log, &text);
+        let _ = std::io::stdout().write_all(format!("{text}\r\n").as_bytes());
         std::process::exit(code);
     }
 

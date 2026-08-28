@@ -638,6 +638,125 @@ pub fn auto_locate_keymaps(exe_dir: &Path) -> Option<PathBuf> {
     candidates.into_iter().find(|p| p.exists())
 }
 
+/// 无界面编辑自检：驱动真实编辑器逻辑，在目标 `wind.keymaps` 上完成
+/// 「打开→定位可编辑条→编辑(改键/模式/Action↔Script)→保存→重载核对持久化→过滤→恢复」闭环。
+/// 返回 (日志行, 退出码)。保存直接走底层 write_keymap，跳过 GUI 的交互确认弹层。
+pub fn run_edittest(path: &Path) -> (Vec<String>, i32) {
+    macro_rules! log_fail {
+        ($log:expr, $msg:expr) => {{
+            $log.push(format!("[FAIL] {}", $msg));
+            return ($log, 1);
+        }};
+    }
+
+    let mut log: Vec<String> = Vec::new();
+    let original = match read_keymap(path) {
+        Ok(f) => f,
+        Err(e) => log_fail!(log, format!("读取失败：{e}")),
+    };
+    if original.is_empty() {
+        log_fail!(log, "文件为空，无从编辑".to_string());
+    }
+    log.push(format!("[OK] 打开 {} 条", original.len()));
+
+    // 定位一条 keys 非空且带 action 的条目，便于校验「Action→Script」的类型切换
+    let Some(idx) = original
+        .entries
+        .iter()
+        .position(|e| !e.keys.trim().is_empty() && e.action.is_some())
+    else {
+        log_fail!(log, "未找到可编辑的 Action 条目".to_string());
+    };
+
+    let mut app = EditorApp::new();
+    app.open_path(path);
+    if app.path.is_none() {
+        log_fail!(log, format!("应用打开失败：{:?}", app.msg));
+    }
+
+    // 1) 编辑：改 keys/modes，并把 Action 切换为 Script
+    app.begin_edit(idx);
+    let Some(mut d) = app.editor.clone() else {
+        log_fail!(log, "begin_edit 未进入编辑态".to_string());
+    };
+    d.keys = "<Ctrl+F11>e2e".to_string();
+    d.modes = "normal, command".to_string();
+    d.role = EditRole::Script;
+    d.action.clear();
+    d.script = "(c) => { print(\"e2e\"); }".to_string();
+    app.apply_edit(&d);
+    if !app.dirty {
+        log_fail!(log, "apply_edit 未标记 dirty".to_string());
+    }
+    log.push("[OK] 编辑生效（keys/modes 已改，Action→Script 已切换）".into());
+
+    // 2) 保存 → 重载核对持久化
+    if let Err(e) = write_keymap(path, &app.file) {
+        log_fail!(log, format!("保存失败：{e}"));
+    }
+    let reloaded = match read_keymap(path) {
+        Ok(f) => f,
+        Err(e) => log_fail!(log, format!("重载失败：{e}")),
+    };
+    let e = &reloaded.entries[idx];
+    if e.keys != "<Ctrl+F11>e2e"
+        || e.modes != "normal, command"
+        || e.action.is_some()
+        || e.script.as_deref() != Some("(c) => { print(\"e2e\"); }")
+    {
+        log_fail!(log, "保存后重载内容与编辑不一致".to_string());
+    }
+    log.push("[OK] 保存→重载：修改已正确持久化".into());
+
+    // 3) 过滤：类型与文本过滤应如实生效
+    let total = app.visible_indices().len();
+    app.kind_filter = 1;
+    let n_action = app.visible_indices().len();
+    let expect_action = reloaded.entries.iter().filter(|e| e.action.is_some()).count();
+    app.kind_filter = 2;
+    let n_script = app.visible_indices().len();
+    let expect_script = reloaded.entries.iter().filter(|e| e.script.is_some()).count();
+    app.kind_filter = 0;
+    if n_action != expect_action || n_script != expect_script {
+        log_fail!(
+            log,
+            format!("过滤计数异常：Action {n_action}≠{expect_action}，Script {n_script}≠{expect_script}")
+        );
+    }
+    app.filter = "Text.Find".to_string();
+    let n_search = app.visible_indices().len();
+    let expect_search = reloaded
+        .entries
+        .iter()
+        .filter(|e| e.target_preview(usize::MAX).contains("Text.Find"))
+        .count();
+    app.filter.clear();
+    if n_search != expect_search {
+        log_fail!(log, format!("文本过滤计数异常：{n_search}≠{expect_search}"));
+    }
+    if app.visible_indices().len() != total {
+        log_fail!(log, "清除过滤后计数未恢复".to_string());
+    }
+    log.push(format!(
+        "[OK] 过滤：总数 {total} / Action {n_action} / Script {n_script} / 搜\"Text.Find\" {n_search}"
+    ));
+
+    // 4) 恢复原状并核对
+    if let Err(e) = write_keymap(path, &original) {
+        log_fail!(log, format!("恢复失败：{e}"));
+    }
+    match read_keymap(path) {
+        Ok(restored) if restored == original => {
+            log.push("[OK] 已恢复原状，逐条一致".into());
+        }
+        Ok(_) => log_fail!(log, "恢复后与原状不一致".to_string()),
+        Err(e) => log_fail!(log, format!("恢复后重载失败：{e}")),
+    }
+
+    log.push("[PASS] 编辑器端到端自检全部通过".into());
+    (log, 0)
+}
+
 /// egui 默认字体不含中日韩(CJK)字形，中文会显示为方块。
 /// 运行期从 Windows 系统字体目录加载一款中文字体作为回退（保持单文件、不捆绑字体文件）。
 pub fn install_chinese_fonts(ctx: &egui::Context) {
