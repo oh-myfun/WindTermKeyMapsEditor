@@ -250,22 +250,32 @@ impl EditorApp {
                 self.make_backup();
             }
             ui.separator();
-            // 搜索框：按 操作名 / 中文描述 / 快捷键 子串过滤（不区分大小写）
-            let search_box = ui.add(
-                egui::TextEdit::singleline(&mut self.search)
-                    .hint_text(T.search)
-                    .desired_width(220.0),
-            );
-            let _ = search_box.on_hover_text(T.search_tip);
-            // 一键清除：仅在已输入内容时显示
-            if !self.search.is_empty()
-                && ui
-                    .add(egui::Button::new("✕").frame(false).small())
-                    .on_hover_text(T.search_clear_tip)
-                    .clicked()
-            {
-                self.search.clear();
-            }
+            // 搜索框：圆角容器内嵌输入框与「×」清除按钮，清除按钮仅在输入后显示
+            let search_tip = T.search_tip;
+            let clear_tip = T.search_clear_tip;
+            egui::Frame::default()
+                .fill(ui.visuals().widgets.inactive.bg_fill)
+                .rounding(ui.visuals().widgets.inactive.rounding)
+                .inner_margin(egui::Margin::symmetric(6.0, 3.0))
+                .show(ui, |ui| {
+                    ui.horizontal(|ui| {
+                        let txt = ui.add(
+                            egui::TextEdit::singleline(&mut self.search)
+                                .frame(false)
+                                .hint_text(T.search)
+                                .desired_width(160.0),
+                        );
+                        txt.on_hover_text(search_tip);
+                        if !self.search.is_empty()
+                            && ui
+                                .add(egui::Button::new("×").frame(false).small())
+                                .on_hover_text(clear_tip)
+                                .clicked()
+                        {
+                            self.search.clear();
+                        }
+                    });
+                });
             ui.separator();
             if let Some(p) = &self.path {
                 ui.label(RichText::new(p.display().to_string()).weak().size(12.0));
@@ -273,7 +283,7 @@ impl EditorApp {
                 ui.label(RichText::new(T.status_no_file).weak());
             }
             if self.dirty {
-                ui.label(RichText::new(T.stat_dirty).strong().color(Color32::LIGHT_YELLOW));
+                ui.label(RichText::new(T.stat_dirty).strong().size(16.0).color(Color32::LIGHT_YELLOW));
             }
         });
         ui.add_space(6.0);

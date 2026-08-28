@@ -67,7 +67,7 @@ pub const T: L = L {
     search_clear_tip: "清空搜索",
     no_match: "没有匹配的条目",
     stat_total: "条目总数",
-    stat_dirty: "未保存",
+    stat_dirty: "*",
     status_no_file: "未打开文件",
     ed_keys_title: "设置快捷键",
     ed_keys: "新的快捷键（Keys）",
