@@ -12,7 +12,10 @@ use windterm_keymaps_editor::app::{
     auto_locate_keymaps, install_chinese_fonts, run_edittest, EditorApp,
 };
 use windterm_keymaps_editor::i18n::T;
-use windterm_keymaps_editor::io::{read_keymap, write_keymap};
+use windterm_keymaps_editor::io::{
+    is_timestamped_backup_name, list_backups, read_keymap, read_keymap_bytes, write_keymap,
+    write_keymap_raw,
+};
 use windterm_keymaps_editor::model::{KeymapEntry, KeymapFile};
 
 fn main() -> eframe::Result {
@@ -124,11 +127,11 @@ fn run_selftest(file: Option<&Path>) -> i32 {
 
     log.push(format!("[OK] 目标文件：{}", work.display()));
 
-    // 1) 读取
-    let original = match read_keymap(&work) {
-        Ok(f) => {
-            log.push(format!("[OK] 读取成功，共 {} 条", f.len()));
-            f
+    // 1) 读取（同时保留原始字节，供恢复时逐字节复原）
+    let (original, original_raw) = match read_keymap_bytes(&work) {
+        Ok(t) => {
+            log.push(format!("[OK] 读取成功，共 {} 条", t.0.len()));
+            t
         }
         Err(e) => return emit_fail(&mut log, format!("读取失败：{e}")),
     };
@@ -146,20 +149,25 @@ fn run_selftest(file: Option<&Path>) -> i32 {
         modes: "normal".to_string(),
         action: Some("Text.Find".to_string()),
         script: None,
+        extra: Default::default(),
     });
 
-    // 3) 保存（覆盖前应有 .bak）
+    // 3) 保存（覆盖前应生成带本地时间戳的备份）
     if let Err(e) = write_keymap(&work, &edited) {
         return emit_fail(&mut log, format!("保存失败：{e}"));
     }
-    log.push("[OK] 保存成功（覆盖前应已生成 .bak）".into());
-    let mut bak_os = work.as_os_str().to_os_string();
-    bak_os.push(".bak");
-    let bak = PathBuf::from(bak_os);
-    if !bak.exists() {
-        return emit_fail(&mut log, "保存后未发现 .bak 备份".into());
+    log.push("[OK] 保存成功（覆盖前应已生成带时间戳备份）".into());
+    let mut baks = list_backups(&work);
+    if baks.is_empty() {
+        return emit_fail(&mut log, "保存后未发现备份".into());
     }
-    log.push("[OK] .bak 备份已生成".into());
+    let newest = baks.remove(0);
+    let nname = newest.file_name().and_then(|s| s.to_str()).unwrap_or("");
+    let base = work.file_name().and_then(|s| s.to_str()).unwrap_or("");
+    if !is_timestamped_backup_name(base, nname) {
+        return emit_fail(&mut log, format!("备份名应带时间戳，实际：{nname}"));
+    }
+    log.push(format!("[OK] 带时间戳备份已生成：{nname}").into());
 
     // 4) 重载核对修改生效
     let reloaded = match read_keymap(&work) {
@@ -187,12 +195,12 @@ fn run_selftest(file: Option<&Path>) -> i32 {
         Err(e) => return emit_fail(&mut log, format!("round-trip 解析失败：{e}")),
     }
 
-    // 6) 从备份恢复并核对与原状一致（保持非破坏性）
-    if let Err(e) = write_keymap(&work, &original) {
+    // 6) 从备份恢复并核对与原状一致（写回原始字节，保证逐字节复原，不污染 fixture）
+    if let Err(e) = write_keymap_raw(&work, &original_raw) {
         return emit_fail(&mut log, format!("恢复失败：{e}"));
     }
     match read_keymap(&work) {
-        Ok(restored) if restored == original => log.push("[OK] 已从原状恢复，内容逐条一致".into()),
+        Ok(restored) if restored == original => log.push("[OK] 已从原状恢复，内容逐条一致（字节级）".into()),
         Ok(_) => return emit_fail(&mut log, "恢复后与原状不一致".into()),
         Err(e) => return emit_fail(&mut log, format!("恢复后重载失败：{e}")),
     }

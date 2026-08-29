@@ -10,10 +10,17 @@
 //! ```
 //! 一条绑定必须有 `keys` 与 `modes`，并恰好有 `action` 或 `script` 之一。
 
+use std::collections::BTreeMap;
+
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 /// 一条 WindTerm 快捷键绑定。
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+///
+/// 除 `keys/modes/action/script` 外，WindTerm 可能会写入其它字段（如 `when`、`map`）。
+/// 这些未知字段经 `flatten` 原样保留在 `extra` 中并在保存时一字不差地写回，
+/// 避免「解析→编辑→保存」后丢失快捷键以外的配置数据。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub struct KeymapEntry {
     /// 键序列：普通键（如 `<Ctrl+C>`）、vim 风格正则（如 `(?P<count>\d*),`）或裸字符（如 `i`）。
     #[serde(default)]
@@ -27,6 +34,9 @@ pub struct KeymapEntry {
     /// 触发的内联 JS 脚本（多行）。与 `action` 二选一。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub script: Option<String>,
+    /// WindTerm 的其它字段（如 `when`/`map`）以及未来新增字段，flatten 保真存储。
+    #[serde(flatten)]
+    pub extra: BTreeMap<String, Value>,
 }
 
 impl KeymapEntry {
@@ -104,7 +114,7 @@ pub const MODE_DESCRIPTIONS: &[ModeInfo] = &[
 ];
 
 /// 整个 `wind.keymaps` 文件（顶层 JSON 数组的封装）。
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct KeymapFile {
     pub entries: Vec<KeymapEntry>,
 }
@@ -129,26 +139,129 @@ impl KeymapFile {
         self.entries.is_empty()
     }
 
-    /// 校验条目完整性，返回所有问题（不中断）。
+    /// 校验条目，返回真正会导致无法使用的问题（不中断）。
+    ///
+    /// 注意：这里是宽容校验——`keys` 为空、`modes` 为空、「缺少 action/script」都是
+    /// WindTerm 允许的合法状态（空 keys/空 modes = 未绑定；无 action/script = 屏蔽系统快捷键），
+    /// 因此不把它们当错误，避免保存时对合法文件误报。仅报告真正结构损坏的情况。
     pub fn validate(&self) -> Vec<String> {
         let mut issues = Vec::new();
         for (i, e) in self.entries.iter().enumerate() {
             let idx = i + 1;
-            if e.keys.trim().is_empty() {
-                issues.push(format!("第 {idx} 条：keys 为空"));
-            }
-            if e.modes.trim().is_empty() {
-                issues.push(format!("第 {idx} 条：modes 为空"));
-            }
             let has_action = e.action.as_deref().is_some_and(|s| !s.trim().is_empty());
             let has_script = e.script.as_deref().is_some_and(|s| !s.trim().is_empty());
             if has_action && has_script {
                 issues.push(format!("第 {idx} 条：同时存在 action 与 script"));
-            } else if !has_action && !has_script {
-                issues.push(format!("第 {idx} 条：缺少 action 或 script"));
             }
         }
         issues
+    }
+
+    /// 查找与指定 keys（规范化后语义等价）冲突的其它条目下标。
+    ///
+    /// `skip` 为正在编辑的条目下标（自身不计入）；`keys` 为空时不检测。
+    /// 返回所有冲突条目在 `entries` 中的下标（可为零个）。
+    pub fn find_duplicate_keys(&self, skip: usize, keys: &str) -> Vec<usize> {
+        if keys.trim().is_empty() {
+            return Vec::new();
+        }
+        let target = normalize_keys(keys);
+        if target.is_empty() {
+            return Vec::new();
+        }
+        let mut out = Vec::new();
+        for (i, e) in self.entries.iter().enumerate() {
+            if i == skip || e.keys.trim().is_empty() {
+                continue;
+            }
+            if normalize_keys(&e.keys) == target {
+                out.push(i);
+            }
+        }
+        out
+    }
+}
+
+/// 把 keys 归一并转为「语义等价」比较键，用于冲突检测。
+///
+/// 尖括号组合：分解为按键序列，修饰键固定排序（ctrl/alt/shift/meta）、键名别名归一，
+/// 从而把 `<Shift+Ctrl+P>` 与 `<Ctrl+Shift+P>`、`<Del>` 与 `<Delete>` 识别为同一键。
+/// 裸字符序列：小写并去空白；含 vim 正则成分的保留原样（仅去空白）。
+pub fn normalize_keys(s: &str) -> String {
+    let s = s.trim();
+    if s.is_empty() {
+        return String::new();
+    }
+    if s.starts_with('<') {
+        let mut out = String::new();
+        let mut rest = s;
+        while let Some(open) = rest.find('<') {
+            let after = &rest[open + 1..];
+            let Some(close_rel) = after.find('>') else { break };
+            out.push_str(&normalize_angle(&after[..close_rel]));
+            rest = &after[close_rel + 1..];
+        }
+        return out;
+    }
+    let compact: String = s.split_whitespace().collect();
+    if s.contains('(') || s.contains('?') || s.contains('\\') || s.starts_with('*') {
+        // vim 风格正则保留大小写语义
+        return compact;
+    }
+    compact.to_lowercase()
+}
+
+/// 归一化单个 `<...>` 内的内容：修饰排序固定 + 键名别名归并。
+fn normalize_angle(inner: &str) -> String {
+    let mut mods: Vec<&str> = Vec::new();
+    let mut body = String::new();
+    for part in inner.split('+').map(str::trim) {
+        let lower = part.to_lowercase();
+        match lower.as_str() {
+            "ctrl" | "control" => mods.push("ctrl"),
+            "alt" | "option" => mods.push("alt"),
+            "shift" => mods.push("shift"),
+            "meta" | "cmd" | "win" | "super" => mods.push("meta"),
+            _ => body = normalize_key_name(part),
+        }
+    }
+    mods.sort_by_key(|m| match *m {
+        "ctrl" => 0,
+        "alt" => 1,
+        "shift" => 2,
+        "meta" => 3,
+        _ => 4,
+    });
+    let mut out = String::from("<");
+    if !mods.is_empty() {
+        out.push_str(&mods.join("+"));
+        out.push('+');
+    }
+    out.push_str(&body);
+    out.push('>');
+    out
+}
+
+/// 键名别名归并（与 WindTerm 实际拼写一致）；单字符统一大写。
+fn normalize_key_name(name: &str) -> String {
+    if name.chars().count() == 1 {
+        return name.to_uppercase();
+    }
+    let mut c = name.chars();
+    match c.next() {
+        Some(f) => {
+            let mut s = f.to_uppercase().collect::<String>();
+            s.push_str(&name[1..].to_lowercase());
+            match s.as_str() {
+                "Delete" => s = "Del".into(),
+                "Insert" => s = "Ins".into(),
+                "Pageup" => s = "PgUp".into(),
+                "Pgdn" | "Pagedown" => s = "PgDown".into(),
+                _ => {}
+            }
+            s
+        }
+        None => String::new(),
     }
 }
 
@@ -265,13 +378,64 @@ mod tests {
 
     #[test]
     fn validate_reports_issues() {
+        // keys 为空属于 WindTerm 合法状态，不报；仅「同时存在 action 与 script」应报。
         let f = KeymapFile::parse_json(
             r#"[{"keys":"","modes":""},{"keys":"a","modes":"n","action":"X","script":"Y"}]"#,
         )
         .unwrap();
         let issues = f.validate();
-        assert!(issues.iter().any(|s| s.contains("keys 为空")));
+        assert!(!issues.iter().any(|s| s.contains("keys 为空")));
         assert!(issues.iter().any(|s| s.contains("同时存在")));
+    }
+
+    #[test]
+    fn validate_tolerates_empty_keys() {
+        // 支持把快捷键设为空（未绑定），保存时不应拦截。
+        let f = KeymapFile::parse_json(r#"[{"keys":"","action":"Text.Copy"}]"#).unwrap();
+        assert!(f.validate().is_empty());
+    }
+
+    #[test]
+    fn normalize_keys_collapses_semantic_equivalents() {
+        // 修饰顺序、键名别名（Del/Delete、PgDn/Pagedown 等）应归并为同一键。
+        assert_eq!(
+            crate::model::normalize_keys("<Shift+Ctrl+P>"),
+            crate::model::normalize_keys("<Ctrl+Shift+P>")
+        );
+        assert_eq!(
+            crate::model::normalize_keys("<Del>"),
+            crate::model::normalize_keys("<Delete>")
+        );
+        assert_eq!(
+            crate::model::normalize_keys("<Meta+D>"),
+            crate::model::normalize_keys("<Super+d>")
+        );
+        assert_eq!(
+            crate::model::normalize_keys("A"),
+            crate::model::normalize_keys("a")
+        );
+        // vim 正则保留语义，不做大小写折叠
+        assert_ne!(
+            crate::model::normalize_keys("(?P<count>\\d*),"),
+            crate::model::normalize_keys("(?P<count>\\d*),a")
+        );
+    }
+
+    #[test]
+    fn find_duplicate_keys_detects_collision() {
+        let f = KeymapFile::parse_json(
+            r#"[{"keys":"<Ctrl+O>","action":"A"},{"keys":"<Ctrl+K>","action":"B"},{"keys":"<Ctrl+o>","action":"C"}]"#,
+        )
+        .unwrap();
+        // 编辑第 1 条为 <Ctrl+K>：与其冲突的应为空
+        assert!(f.find_duplicate_keys(1, "<Ctrl+K>").is_empty());
+        // 编辑第 1 条为 <Ctrl+o>：与第 0 条、第 2 条（均为 Ctrl+O，大小写不敏感）冲突
+        let dup = f.find_duplicate_keys(1, "<Ctrl+o>");
+        assert_eq!(dup, vec![0, 2], "应返回所有语义等价的冲突条目");
+        // 编辑第 0 条 <Ctrl+O> 自身应被跳过（仅剩第 2 条冲突）
+        assert_eq!(f.find_duplicate_keys(0, "<Ctrl+O>"), vec![2]);
+        // 空 keys 不检测
+        assert!(f.find_duplicate_keys(1, "").is_empty());
     }
 
     #[test]
@@ -290,18 +454,24 @@ mod tests {
     }
 
     #[test]
-    fn unknown_fields_are_ignored() {
-        // 未来版本的 WindTerm 可能新增字段，解析必须宽容忽略，不影响已知字段保真。
-        let f = KeymapFile::parse_json(
-            r#"[{"keys":"<Ctrl+O>","modes":"normal","action":"File.Open","extra":123,"desc":"x"}]"#,
-        )
-        .unwrap();
+    fn unknown_fields_preserved_round_trip() {
+        // WindTerm 可能写入 when/map 等快捷键以外的字段；保存必须逐条保真，不得丢失。
+        let src = r#"[
+            {"keys":"<Ctrl+O>","modes":"normal","action":"File.Open","when":"terminal","map":{"k":"v"}}
+        ]"#;
+        let f = KeymapFile::parse_json(src).unwrap();
         let e = &f.entries[0];
         assert_eq!(e.keys, "<Ctrl+O>");
         assert_eq!(e.action.as_deref(), Some("File.Open"));
-        // 未知字段不随序列化返回
+        assert_eq!(e.extra.get("when"), Some(&Value::String("terminal".into())));
+        assert!(e.extra.contains_key("map"));
+        // round-trip 后 when/map 仍在，逐值保真
         let json = f.to_json_string().unwrap();
-        assert!(!json.contains("extra"));
+        assert!(json.contains("\"when\""));
+        assert!(json.contains("\"map\""));
+        assert!(json.contains("\"k\": \"v\""));
+        let back = KeymapFile::parse_json(&json).unwrap();
+        assert_eq!(back, f, "round-trip 后未知字段应逐条保真");
     }
 
     #[test]
@@ -311,6 +481,7 @@ mod tests {
             modes: "normal".into(),
             action: Some("Text.Find".into()),
             script: None,
+            extra: Default::default(),
         };
         assert_eq!(a.target_preview(20), "Text.Find");
         a.action = None;
@@ -337,18 +508,17 @@ mod tests {
     }
 
     #[test]
-    fn validate_reports_missing_action_or_script() {
-        let f = KeymapFile::parse_json(r#"[{"keys":"a","modes":"n"}]"#).unwrap();
-        let issues = f.validate();
-        assert!(issues.iter().any(|s| s.contains("缺少 action 或 script")));
+    fn validate_tolerates_missing_action_or_script() {
+        // WindTerm 用「仅 keys+modes、无 action/script」的条目屏蔽系统快捷键，属合法，不应列为问题。
+        let f = KeymapFile::parse_json(r#"[{"keys":"<Ctrl+N>","modes":"normal"}]"#).unwrap();
+        assert!(f.validate().is_empty());
     }
 
     #[test]
-    fn validate_reports_empty_modes() {
-        // 缺 modes 字段（默认空串）同样应被校验捕获。
-        let f = KeymapFile::parse_json(r#"[{"keys":"a","action":"X"}]"#).unwrap();
-        let issues = f.validate();
-        assert!(issues.iter().any(|s| s.contains("modes 为空")));
+    fn validate_tolerates_empty_modes() {
+        // 真实 WindTerm 配置里大量条目 modes 为空（默认全局生效），不应在保存时误报。
+        let f = KeymapFile::parse_json(r#"[{"keys":"<Alt+D>","action":"X"}]"#).unwrap();
+        assert!(f.validate().is_empty());
     }
 
     #[test]

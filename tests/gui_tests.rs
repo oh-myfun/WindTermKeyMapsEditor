@@ -13,7 +13,7 @@ use egui_kittest::{
     kittest::{NodeT, Queryable},
     Harness,
 };
-use windterm_keymaps_editor::app::EditorApp;
+use windterm_keymaps_editor::app::{EditorApp, KeysDraft, RecordMode};
 use windterm_keymaps_editor::model::{KeymapEntry, KeymapFile};
 
 fn ent(keys: &str, action: &str) -> KeymapEntry {
@@ -22,6 +22,7 @@ fn ent(keys: &str, action: &str) -> KeymapEntry {
         modes: "normal".to_string(),
         action: Some(action.to_string()),
         script: None,
+        extra: Default::default(),
     }
 }
 
@@ -31,12 +32,17 @@ fn script_ent(keys: &str) -> KeymapEntry {
         modes: "normal".to_string(),
         action: None,
         script: Some("(c) => {\n  print('hi');\n}".to_string()),
+        extra: Default::default(),
     }
 }
 
 fn app_with(entries: Vec<KeymapEntry>) -> EditorApp {
     let mut a = EditorApp::new();
-    a.file = KeymapFile { entries };
+    let file = KeymapFile { entries };
+    if let Ok(raw) = file.to_json_string().map(|s| s.into_bytes()) {
+        a.raw = Some(raw);
+    }
+    a.file = file;
     a.path = Some(PathBuf::from("probe.keymaps"));
     a
 }
@@ -274,7 +280,7 @@ fn dump_text_inputs(h: &Harness<'_, EditorApp>) {
     }
 }
 
-/// 定位弹窗内的「录制」按钮：label 形如 "None. 录制"（含当前已录值），按 Button+包含“录制”匹配。
+/// 定位弹窗内的「录制」按钮（新实现按钮固定显示「录制」/「录制中…」，不展示已录值）。
 /// Modal 无容器节点，全局范围内此 label 唯一，直接全局查询。
 fn record_button<'t>(h: &'t Harness<'_, EditorApp>) -> egui_kittest::Node<'t> {
     h.query_by(|n| {
@@ -341,6 +347,51 @@ fn cancel_keeps_original_keys() {
     );
     assert!(!h.state().dirty, "取消不应标记未保存");
     assert!(h.state().keys_edit.is_none(), "取消后弹窗应关闭");
+}
+
+#[test]
+fn conflict_and_empty_keys_are_supported_in_dialog() {
+    let mut h = harness_for(vec![
+        ent("<Ctrl+C>", "Text.Copy"),
+        ent("<Ctrl+O>", "File.Open"),
+    ]);
+    // —— 冲突提示：把第 1 条改成与第 2 条相同的键 ——
+    open_keys_dialog(&mut h, "<Ctrl+C>");
+    {
+        let input = keys_input(&h);
+        input.focus();
+    }
+    h.step();
+    for _ in 0..8 {
+        h.key_press(egui::Key::Backspace); // 清空 "<Ctrl+C>"
+        h.step();
+    }
+    {
+        let input = keys_input(&h);
+        input.type_text("<Ctrl+o>");
+    }
+    h.step();
+    assert!(
+        h.query_by_label_contains("使用相同快捷键").is_some(),
+        "输入与其它条目相同的键应提示冲突"
+    );
+    // —— 空值支持：清空后不警告，且能确定保存为未绑定 ——
+    {
+        let input = keys_input(&h);
+        input.focus();
+    }
+    h.step();
+    for _ in 0..8 {
+        h.key_press(egui::Key::Backspace); // 清空 "<Ctrl+o>"
+        h.step();
+    }
+    assert!(
+        h.query_by_label_contains("使用相同快捷键").is_none(),
+        "清空后不再提示冲突"
+    );
+    h.get_by_label("确定").click_accesskit();
+    h.step();
+    assert_eq!(h.state().file.entries[0].keys, "", "确定后空 keys 应被应用");
 }
 
 #[test]
@@ -495,11 +546,18 @@ fn save_without_file_shows_error() {
 fn save_with_file_writes_and_clears_dirty() {
     let dir = std::env::temp_dir();
     let path = dir.join(format!("wke_save_test_{}.keymaps", std::process::id()));
-    std::fs::write(&path, "[]").expect("应能写入临时文件");
+    std::fs::write(&path, r#"[{"keys":"<Ctrl+C>","modes":"normal","action":"Text.Copy"}]"#)
+        .expect("应能写入临时文件");
     let mut a = EditorApp::new();
     a.open_path(&path);
-    a.file.entries = vec![ent("<Ctrl+C>", "Text.Copy")];
-    a.dirty = true;
+    // 通过真实的「就地编辑」路径改 keys（这样会同步更新原始字节缓冲，保存时逐字节写回）。
+    a.apply_keys_edit(&KeysDraft {
+        index: 0,
+        keys: "<Ctrl+V>".into(),
+        recording: false,
+        mode: RecordMode::Replace,
+    });
+    assert!(a.dirty, "就地编辑后应标记未保存");
     let mut h = Harness::builder()
         .with_size([980.0, 660.0])
         .build_eframe(|_cc| a);
@@ -512,7 +570,8 @@ fn save_with_file_writes_and_clears_dirty() {
         "应显示保存成功消息"
     );
     let text = std::fs::read_to_string(&path).unwrap_or_default();
-    assert!(text.contains("Text.Copy"), "保存后文件应包含编辑内容");
+    assert!(text.contains("<Ctrl+V>"), "保存后文件应包含编辑后的快捷键");
+    assert!(text.contains("Text.Copy"), "保存后文件应保留快捷键以外的字段");
     let _ = std::fs::remove_file(&path);
 }
 
@@ -562,7 +621,60 @@ fn theme_toggle_button_anchored_to_top_right() {
 }
 
 #[test]
-fn record_clipboard_copy_captures_ctrl_c() {
+    fn help_button_shows_info_and_opens_complete_guide_and_closes() {
+        let mut h = harness_for(vec![ent("<Ctrl+C>", "Text.Copy")]);
+        h.step();
+        h.get_by_label("帮助").click();
+        // Modal 的 ScrollArea(max_height=400) 需数帧测量后才稳定，先多跑几帧再交互。
+        for _ in 0..8 {
+            h.step();
+        }
+        // 顶部信息：作者 / 仓库地址 / 版本号
+        assert!(
+            h.query_by_label_contains("Myfung").is_some(),
+            "帮助顶部应显示作者 Myfung"
+        );
+        assert!(
+            h.query_by_label_contains("github.com/oh-myfun/WindTermKeyMapsEditor").is_some(),
+            "帮助顶部应显示仓库地址链接"
+        );
+        assert!(
+            h.query_by_label_contains(&format!("v{}", env!("CARGO_PKG_VERSION"))).is_some(),
+            "帮助顶部应显示版本号"
+        );
+        // 标题与正文小节仍在
+        assert!(
+            h.query_by_label_contains("快捷键设置完整说明").is_some(),
+            "帮助弹窗应显示标题"
+        );
+        assert!(
+            h.query_by_label_contains("三种合法形式").is_some(),
+            "帮助应包含定义说明小节"
+        );
+        assert!(
+            h.query_by_label_contains("录制按钮用法").is_some(),
+            "帮助应包含录制说明小节"
+        );
+        assert!(
+            h.query_by_label_contains("键名拼写规范").is_some(),
+            "帮助应包含键名拼写规范小节"
+        );
+        assert!(
+            h.query_by_label_contains("vim 折叠命令").is_some(),
+            "帮助应包含折叠命令说明小节"
+        );
+        // 关闭：布局已稳定，指针点击底部「关闭」应生效
+        h.get_by_label("关闭").click();
+        h.step(); // 点击：show_help 置 false（本帧弹窗仍渲染）
+        h.step(); // 重渲染：Modal 移除
+        assert!(
+            h.query_by_label_contains("快捷键设置完整说明").is_none(),
+            "关闭后帮助弹窗应消失"
+        );
+    }
+
+#[test]
+    fn record_clipboard_copy_captures_ctrl_c() {
     // 复现 winit 把 Ctrl+C 翻译为 Event::Copy（同时移除 Key 事件）的真实路径：
     // 录制态下注入 Copy 事件，应被补获为 <Ctrl+C> 并替换原值 <Ctrl+V>。
     let mut h = harness_for(vec![ent("<Ctrl+V>", "Text.Paste")]);
@@ -591,6 +703,99 @@ fn record_clipboard_copy_captures_ctrl_c() {
 }
 
 #[test]
+fn last_row_is_reachable_by_scroll() {
+    // 回归：列表最后一行必须能通过滚动完整显示。
+    // 用 200 行超过一屏可见范围，验证 ScrollArea 能滚动到最后一行。
+    // egui 会把所有行都注册进 accesskit 树（不裁剪离屏节点），所以用「行的屏幕坐标是否
+    // 落入可视区」来判断是否真正滚进来了，而不是节点是否存在。
+    let mut entries = Vec::new();
+    for i in 0..200 {
+        entries.push(ent(&format!("<Ctrl+{}>", i), &format!("K.{}", i)));
+    }
+    let mut h = harness_for(entries);
+    h.step();
+    let height: f32 = 660.0; // harness_for 的窗口内高（980x660）
+    // 用最后一条的 keys 单元格（label 唯一）来测量其屏幕位置。
+    let top_before = h
+        .query_by_label("<Ctrl+199>")
+        .expect("最后一行应在树中")
+        .rect()
+        .min
+        .y;
+    assert!(
+        top_before >= height,
+        "最后一行初始应在可视区之外（top={top_before}）"
+    );
+    // 通过 egui 的 ScrollIntoView 动作把最后一行滚入可视区。
+    h.query_by_label("<Ctrl+199>")
+        .expect("最后一行应在树中")
+        .scroll_to_me();
+    for _ in 0..3 {
+        h.step();
+    }
+    let rect = h
+        .query_by_label("<Ctrl+199>")
+        .expect("最后一行应在树中")
+        .rect();
+    assert!(
+        0.0 <= rect.min.y && rect.max.y <= height,
+        "滚动到底后最后一行应完整落入可视区（top={:.0}, bottom={:.0}, height={height}）",
+        rect.min.y,
+        rect.max.y
+    );
+    assert!(rect.min.y < height - 10.0, "最后一行不应只在底部露出 1px");
+}
+
+#[test]
+fn table_header_stays_visible_when_scrolled_down() {
+    // 回归：固定标题栏。滚动到列表底部时，三列表头应固定在可视区顶部，而不是随列表滚出视口。
+    // egui 会把所有节点都注册进 accesskit 树，所以用「表头的屏幕坐标是否仍落在可视区顶部」
+    // 来判断是否真正固定，而非仅判断节点是否存在。
+    let mut entries = Vec::new();
+    for i in 0..200 {
+        entries.push(ent(&format!("<Ctrl+{}>", i), &format!("K.{}", i)));
+    }
+    let mut h = harness_for(entries);
+    h.step();
+    let height: f32 = 660.0; // harness_for 的窗口内高
+    // 滚到最后一行。
+    h.query_by_label("<Ctrl+199>")
+        .expect("最后一行应在树中")
+        .scroll_to_me();
+    for _ in 0..3 {
+        h.step();
+    }
+    // 最后一行确实滚到可视区（偶发兜底，主断言是对表头）。
+    let last = h
+        .query_by_label("<Ctrl+199>")
+        .expect("最后一行应在树中")
+        .rect();
+    assert!(
+        last.min.y < height,
+        "滚动到底后最后一行应进入可视区（top={:.0}）",
+        last.min.y
+    );
+    // 三列表头仍固定在可视区顶部。
+    for label in ["操作名", "中文描述", "快捷键 (Keys)"] {
+        let r = h
+            .query_by_label(label)
+            .unwrap_or_else(|| panic!("表头 {label} 应在树中"))
+            .rect();
+        assert!(
+            0.0 <= r.min.y && r.max.y <= height,
+            "表头 {label} 应固定在可视区（top={:.0}, bottom={:.0}, height={height}）",
+            r.min.y,
+            r.max.y
+        );
+        assert!(
+            r.min.y < 60.0,
+            "表头 {label} 应位于表格顶部（top={:.0}）",
+            r.min.y
+        );
+    }
+}
+
+#[test]
 fn zoom_event_changes_pixels_per_point() {
     let mut h = harness_for(vec![ent("<Ctrl+C>", "Text.Copy")]);
     h.step();
@@ -605,5 +810,83 @@ fn zoom_event_changes_pixels_per_point() {
     assert!(
         zoomed > base,
         "注入放大事件后像素比应变大（{base} -> {zoomed}）"
+    );
+}
+
+// ---------- 一键 Emacs 风格弹窗 ----------
+
+#[test]
+fn emacs_modal_renders_full_editable_list_and_applies() {
+    let mut h = harness_for(vec![
+        ent("<Ctrl+W>", "Window.CloseActiveView"),          // 释放行占用者
+        ent("<Alt+B>", "Window.ShowPaletteMultiplexer"),    // 语义键占用者
+        ent("<Ctrl+Left>", "Text.MoveToPreviousWordStart"), // 语义操作 → 将被绑到 Alt+B
+    ]);
+    h.step();
+    h.get_by_label("Emacs风格").click();
+    h.step();
+    h.step();
+    h.step();
+    h.step(); // Modal（Area）首帧 sizing，多跑几帧稳定渲染
+    // 弹窗为每条预设渲染一行「复位」按钮：行数 = EMACS_PRESET 条数。
+    // （注：egui/kittest 下带 color 的 RichText label 提取为空串，故改用按钮计数断言“完整清单”。）
+    // 只统计“复位”按钮（表头第 5 列现也显示“复位”标题，那是 Label 非按钮）。
+    let reset_count = h
+        .query_all_by(|n| {
+            n.role() == egui::accesskit::Role::Button && n.label().is_some_and(|l| l == "复位")
+        })
+        .count();
+    assert_eq!(
+        reset_count,
+        windterm_keymaps_editor::app::EMACS_PRESET.len(),
+        "弹窗应列出完整修改清单（每行一个复位按钮），实际 {reset_count}"
+    );
+    assert!(
+        h.query_by_label_contains("一键应用").is_some(),
+        "弹窗应有「一键应用」按钮"
+    );
+    h.get_by_label("一键应用").click_accesskit();
+    h.step();
+    h.step(); // 应用后关闭弹窗的重渲染
+    assert_eq!(h.state().file.entries[0].keys, "<Ctrl+Shift+W>");
+    assert_eq!(h.state().file.entries[1].keys, "<Alt+Shift+B>");
+    assert_eq!(h.state().file.entries[2].keys, "<Alt+B>");
+    assert_eq!(
+        h.state().file.entries[2].action.as_deref(),
+        Some("Text.MoveToPreviousWordStart")
+    );
+    assert!(h.state().dirty, "一键应用后应标记未保存");
+}
+
+/// 回归断言：一键 Emacs 弹窗的 5 列表格必须完整落在视口内（最右侧「复位」列不溢出）。
+/// 此前 Grid 的 add_sized 与 Table 的 exact 都曾被 Modal 的超大 available 撑宽，把
+/// 「修改后/复位」列挤出窗口右缘；本用例在应用自身坐标系断言复位按钮右缘 < 视口宽，
+/// 防止列布局回归。
+#[test]
+fn emacs_modal_columns_fit_within_viewport() {
+    let mut h = harness_for(vec![
+        ent("<Ctrl+W>", "Window.CloseActiveView"),
+        ent("<Alt+B>", "Window.ShowPaletteMultiplexer"),
+        ent("<Ctrl+Left>", "Text.MoveToPreviousWordStart"),
+    ]);
+    h.step();
+    h.get_by_label("Emacs风格").click();
+    for _ in 0..8 {
+        h.step();
+    }
+    // 最右侧「复位」按钮的右缘应落在视口(980x660)内
+    let max_right = h
+        .query_all_by(|n| {
+            n.role() == egui::accesskit::Role::Button && n.label().as_deref() == Some("复位")
+        })
+        .map(|n| n.rect().max.x)
+        .fold(0.0_f32, f32::max);
+    assert!(
+        max_right < 980.0,
+        "Emacs 弹窗表格最右列(复位)右缘 {max_right} 超出视口宽 980，列被挤出窗口"
+    );
+    assert!(
+        max_right > 700.0,
+        "Emacs 弹窗最右列(复位)右缘 {max_right} 过小，5 列可能未完整展开"
     );
 }

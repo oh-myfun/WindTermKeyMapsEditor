@@ -25,7 +25,9 @@ WindTerm 的快捷键配置集中在 `global/wind.keymaps`（JSON 数组，531 �
 
 测试框架（已引入）：`egui_kittest 0.33.3`（egui 官方成熟 GUI 测试框架，基于 kittest + AccessKit），
 在 `tests/gui_tests.rs` 中以 Harness 驱动完整 eframe 应用做交互/回归测试（排序、搜索、快捷键编辑弹窗、录制、保存落盘）。
-依赖版本说明：egui-keybind 0.8.0 锁定 egui 0.33，故 egui/eframe/egui_kittest 均取 0.33.3（其为 0.33 系列最新）；rfd 0.17.2、egui-keybind 0.8.0 已是最新。
+依赖版本说明：egui-keybind 0.8.0 曾引入但已移除——录制改为编辑器自管理（按钮固定显示「录制」，事件级捕获
+普通 Key 事件 + 剪贴板 Copy/Cut/Paste 反向映射），不依赖第三方录制组件。
+egui/eframe/egui_kittest 均取 0.33.3（0.33 系列最新，与自研究方案兼容）；rfd 0.17.2 已是最新。
 
 ### M1 核心数据模型 + 测试（纯逻辑）
 - `model/keymap.rs`：`KeymapEntry { keys, modes, action, script }`，serde 解析/序列化
@@ -69,3 +71,46 @@ WindTerm 的快捷键配置集中在 `global/wind.keymaps`（JSON 数组，531 �
 - [ ] round-trip 测试全绿；`cargo test`、`cargo clippy -D warnings` 通过
 - [ ] 单文件 exe 在 Windows 正常运行，中文界面
 - [ ] GitHub Actions 自动构建并可下载 Release 产物
+
+## 7. 附录：WindTerm 快捷键定义规范（已实测固化）
+
+来源：对 `samples/global/wind.keymaps`（531 条）逐一核算出的真实规则。
+编辑器对 keys 的**录入与校验**一律以此为准，任何改动不得与之矛盾。
+
+### 7.1 keys 三种合法形式
+
+| 形式 | 示例 | 说明 |
+|---|---|---|
+| 组合键 | `<Ctrl+X>`、`<Alt+Shift+P>` | `<修饰键+键名>`；修饰键 `Ctrl`/`Alt`/`Shift`；键名首字母大写 |
+| vim 正则 | `(?P<count>\d*),`、`z[mM]` | 自由正则，用于带次数/复杂序列；词法里含 `(`/`?`/`\` 即不按单键处理 |
+| 裸字符序列 | `i`、`za`、`zc`、`zC` | 连续按键序列；单字母一律小写，大写用 `<Shift+I>` |
+
+### 7.2 键名拼写
+
+- **规范拼写**（WindTerm 实际使用）：`Del`、`Ins`、`PgUp`、`PgDown`（注意是 **PgDown 非 PgDn**）。
+- 容错别名（校验接受、录制不产出）：`Delete`、`Insert`、`PageUp`、`PageDown`、`PgDn`。
+- 无修饰仍需尖括号：`<Esc> <Enter> <Tab> <Backspace> <Home> <End> <PgUp> <PgDown> <Space>`
+  `<Up> <Down> <Left> <Right> <F1>~<F12>`。
+- vim 折叠命令即多键裸序列（非单键）：`za` 切换折叠、`zc` 折叠、`zC` 折叠嵌套、`z[mM]`/`z[rR]` 全折叠/展开。
+
+### 7.3 录制输出规则
+
+- 无修饰普通字母 → 小写裸字符（`i`）；大小写意图用 `<Shift+I>` 表达。
+- 功能/方向/标点/N 个数字的 F 键 → 具名键加尖括号：`<F11>`、`<Space>`、`<Up>`。
+- `Ctrl`/`Ctrl+Shift` 组合 → `<Ctrl+A>`、`<Ctrl+Shift+N>`，键名首字母大写。
+- `Ctrl+C/V/X` 会被 egui-winit 翻译为剪贴板事件（Copy/Cut/Paste，原 Key 事件被移除），
+  录制时须反向映射回 `<Ctrl+C>` 等。
+
+### 7.4 触发语义（供理解，WindTerm 内部）
+
+- 按键即 vim 键映射；每一条 keys 是匹配按键缓冲的正则。
+- 完全匹配即触发动作；前缀匹配则等待后续按键（如 `za` 需按两次）。
+- `(?P<count>\d*)` 捕获可选数字作操作次数（如 `5`+`Down` = 下移 5 行）。
+
+### 7.5 对实现的约束
+
+- 校验（`keys_warning`/`is_known_key_token`）：裸字符串只查空白；`<>` 内单字母 token 合法；
+  vim 正则与裸序列保持宽容、不误报。
+- **核心一致性**：录制产出的键名 === WindTerm 规范拼写，且必须能通过校验——
+  由回归测试 `recorded_names_are_windterm_spellings_and_pass_validation` 兜底，防 Delete/Del、PageDown/PgDn 再分叉。
+- 界面「帮助」弹窗内置的完整说明（`src/i18n.rs` 的 `help_text`）据此生成，可作需求侧权威依据。

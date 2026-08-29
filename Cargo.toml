@@ -1,6 +1,6 @@
 [package]
 name = "windterm-keymaps-editor"
-version = "0.1.0"
+version = "0.9.0"
 edition = "2021"
 rust-version = "1.74"
 description = "WindTerm 快捷键配置文件（wind.keymaps）可视化编辑器 —— 轻量、简洁、美观、高效"
@@ -18,10 +18,13 @@ path = "src/lib.rs"
 [dependencies]
 eframe = "0.33"
 egui = "0.33"
+# egui 官方表格组件：其 `Table` 的 header 固定不随内容滚动，用于实现「固定标题栏」。
+egui_extras = "0.33"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 rfd = "0.17"
-egui-keybind = "0.8.0"
+# 备份文件名使用本地时间戳（Local::now）。
+chrono = "0.4"
 
 [dev-dependencies]
 # egui 官方成熟 GUI 测试框架（基于 kittest + AccessKit），用于驱动完整 eframe 应用做交互/回归测试。
