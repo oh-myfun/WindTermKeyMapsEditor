@@ -74,9 +74,10 @@ pub fn write_keymap(path: &Path, file: &KeymapFile) -> Result<()> {
 
     let json = file.to_json_string().map_err(KeymapError::Json)?;
 
-    // 若目标存在，先备份。
+    // 若目标存在，先备份。备份是尽力而为：.bak 被其他进程占用/处于删除待定时
+    // 不应阻塞主文件保存。主文件写入失败仍会报错；备份失败仅失去本次快照。
     if path.exists() {
-        create_backup(path)?;
+        let _ = create_backup(path);
     }
 
     let parent = path.parent().unwrap_or_else(|| Path::new("."));

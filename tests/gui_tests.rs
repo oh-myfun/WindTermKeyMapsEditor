@@ -302,7 +302,7 @@ fn manual_typing_and_confirm_applies() {
     }
     h.step();
     // 确定 → 应用并标记 dirty
-    h.get_by_label("确定").click();
+    h.get_by_label("确定").click_accesskit();
     h.step();
     assert_eq!(h.state().file.entries[0].keys, "<Ctrl+Shift+P>");
     assert!(h.state().dirty, "应用后应标记未保存");
@@ -323,7 +323,7 @@ fn cancel_keeps_original_keys() {
         input.type_text("X");
     }
     h.step();
-    h.get_by_label("取消").click();
+    h.get_by_label("取消").click_accesskit();
     h.step();
     assert_eq!(h.state().file.entries[0].keys, "<Ctrl+C>", "取消不应改动原值");
     assert!(!h.state().dirty, "取消不应标记未保存");
@@ -361,6 +361,35 @@ fn record_button_captures_combo_in_windterm_format() {
 }
 
 #[test]
+fn record_esc_does_not_close_modal() {
+    let mut h = harness_for(vec![ent("<Ctrl+C>", "Text.Copy")]);
+    open_keys_dialog(&mut h, "<Ctrl+C>");
+    // 进入录制态
+    {
+        let rec = record_button(&h);
+        rec.click_accesskit();
+    }
+    h.step();
+    h.step();
+    // 录制态按 Esc：应录入为 <Esc>，且不得因此关闭弹窗
+    h.key_press(egui::Key::Escape);
+    h.step();
+    h.step();
+    assert!(
+        h.state().keys_edit.is_some(),
+        "录制 Esc 不应关闭快捷键设置弹窗"
+    );
+    {
+        let applied = keys_input(&h);
+        assert_eq!(
+            applied.accesskit_node().value().map(|v| v.to_string()).as_deref(),
+            Some("<Esc>"),
+            "录制 Esc 应写入为 <Esc>"
+        );
+    }
+}
+
+#[test]
 fn record_button_append_mode_concatenates() {
     let mut h = harness_for(vec![ent("<Ctrl+C>", "Text.Copy")]);
     open_keys_dialog(&mut h, "<Ctrl+C>");
@@ -393,10 +422,10 @@ fn record_button_append_mode_concatenates() {
 }
 
 #[test]
-fn modal_header_close_button_discards_draft() {
+fn cancel_button_discards_draft() {
     let mut h = harness_for(vec![ent("<Ctrl+C>", "Text.Copy")]);
     open_keys_dialog(&mut h, "<Ctrl+C>");
-    // 输入无效内容后点右上角 ×，应丢弃草稿、不落盘
+    // 修改内容后点「取消」，应丢弃草稿、不落盘
     {
         let input = keys_input(&h);
         input.focus();
@@ -407,12 +436,12 @@ fn modal_header_close_button_discards_draft() {
         input.type_text("Bad");
     }
     h.step();
-    // 输入内容触发警告后，Modal 因内容变高会重新居中（Area 需一帧 settle），
-    // 位置点击会落空；× 用 accesskit 动作点击（按 id 定位，与坐标无关）。
-    h.get_by_label("×").click_accesskit();
+    // Modal 因内容变高会重新居中（Area 需一帧 settle），位置点击会落空；
+    // 取消用 accesskit 动作点击（按 id 定位，与坐标无关）。
+    h.get_by_label("取消").click_accesskit();
     h.step();
-    assert!(h.state().keys_edit.is_none(), "× 关闭后弹窗应消失");
-    assert_eq!(h.state().file.entries[0].keys, "<Ctrl+C>", "× 关闭不应改动原值");
+    assert!(h.state().keys_edit.is_none(), "取消后弹窗应消失");
+    assert_eq!(h.state().file.entries[0].keys, "<Ctrl+C>", "取消不应改动原值");
     assert!(!h.state().dirty);
 }
 
@@ -465,4 +494,40 @@ fn backup_without_file_shows_error() {
     h.get_by_label("备份").click();
     h.step();
     assert!(h.query_by_label_contains("尚未打开任何文件").is_some());
+}
+
+// ---------- 主题与缩放 ----------
+
+#[test]
+fn theme_toggle_switches_dark_light() {
+    let mut h = harness_for(vec![ent("<Ctrl+C>", "Text.Copy")]);
+    h.step();
+    assert!(h.state().dark_mode, "默认应为深色主题");
+    // 深色时按钮显示 ☀（切到浅色）；点击后需再跑一帧，按钮才以新主题重渲染成 🌙
+    h.get_by_label("☀").click();
+    h.step(); // 处理点击：dark_mode=D
+    h.step(); // 重渲染：按钮显示 🌙
+    assert!(!h.state().dark_mode, "点击 ☀ 后应切到浅色主题");
+    // 浅色时按钮显示 🌙（切回深色）
+    h.get_by_label("🌙").click();
+    h.step();
+    assert!(h.state().dark_mode, "点击 🌙 后应切回深色主题");
+}
+
+#[test]
+fn zoom_event_changes_pixels_per_point() {
+    let mut h = harness_for(vec![ent("<Ctrl+C>", "Text.Copy")]);
+    h.step();
+    let base = h.output().pixels_per_point;
+    // 注入一次放大手势（对应 Ctrl+滚轮 由 egui 折算的 Zoom 事件）。
+    // set_zoom_factor 在下一帧生效，多跑几帧读取最终输出像素比。
+    h.event(egui::Event::Zoom(1.25));
+    for _ in 0..3 {
+        h.step();
+    }
+    let zoomed = h.output().pixels_per_point;
+    assert!(
+        zoomed > base,
+        "注入放大事件后像素比应变大（{base} -> {zoomed}）"
+    );
 }

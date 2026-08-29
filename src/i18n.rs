@@ -9,6 +9,9 @@ pub struct L {
     pub save_tip: &'static str,
     pub backup: &'static str,
     pub backup_tip: &'static str,
+    // 主题（官方样式的 ☀/🌙 切换钮：深色时显示 ☀，浅色时显示 🌙）
+    pub theme_switch_light: &'static str,
+    pub theme_switch_dark: &'static str,
     // 表头
     pub col_action: &'static str,
     pub col_desc: &'static str,
@@ -64,6 +67,8 @@ pub const T: L = L {
     save_tip: "写回当前文件（覆盖前自动备份到 .bak）",
     backup: "备份",
     backup_tip: "立即把当前文件备份到 .bak",
+    theme_switch_light: "切换到浅色主题",
+    theme_switch_dark: "切换到深色主题",
     col_action: "操作名",
     col_desc: "中文描述",
     col_keys: "快捷键 (Keys)",

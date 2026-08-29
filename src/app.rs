@@ -73,6 +73,8 @@ pub struct EditorApp {
     sort: Option<SortState>,
     /// 已写入的窗口标题，避免每帧重复发送 Title 命令。
     last_title: String,
+    /// 是否使用深色主题（否则浅色）；用户在工具栏切换。
+    pub dark_mode: bool,
 
     pub selected: Option<usize>,
     pub keys_edit: Option<KeysDraft>,
@@ -90,6 +92,7 @@ impl EditorApp {
             search: String::new(),
             sort: None,
             last_title: String::new(),
+            dark_mode: true,
             selected: None,
             keys_edit: None,
             confirm: None,
@@ -227,32 +230,46 @@ impl eframe::App for EditorApp {
             self.try_save();
         }
 
+        // 主题：跟随工具栏「深色/浅色」选择。egui 会自动为两种主题维护独立样式。
+        ctx.set_theme(if self.dark_mode {
+            egui::Theme::Dark
+        } else {
+            egui::Theme::Light
+        });
+
+        // 缩放：Ctrl+鼠标滚轮（egui 已把该手势折算为 zoom_delta，这里把它落地为全局缩放）。
+        let zoom = ctx.input(|i| i.zoom_delta());
+        if zoom != 1.0 {
+            let factor = (ctx.zoom_factor() * zoom).clamp(0.5, 2.5);
+            ctx.set_zoom_factor(factor);
+        }
+
         egui::TopBottomPanel::top("toolbar").show(ctx, |ui| self.ui_toolbar(ui));
         egui::CentralPanel::default().show(ctx, |ui| self.ui_table(ui));
         egui::TopBottomPanel::bottom("statusbar").show(ctx, |ui| self.ui_statusbar(ui));
 
-        // 设置快捷键对话框（模态，标题栏带关闭按钮）
+        // 设置快捷键对话框：官方 egui::Modal（自带遮罩阻断背景 + Esc/点遮罩关闭），
+        // 无内置标题栏，标题与关闭按钮在内容内自绘（官方标准做法）。
         // 对 draft 采用「取出→渲染→写回」方式：TextEdit/Keybind 直接改 d.*，帧末写回
         // self.keys_edit，编辑内容才能跨帧保留。若用 clone 每次重建初始值，用户输入会立即被覆盖。
-        // `close` 为 true（×/确定/取消/点遮罩/Esc）即关闭并丢弃草稿；仅保持打开才写回。
+        // `close` 为 true（×/确定/取消）即关闭并丢弃草稿；仅保持打开才写回。
         if let Some(mut d) = self.keys_edit.take() {
             let mut close = false;
-            // egui 0.33 用 Modal（自带遮罩拦截背景输入），无系统标题栏，标题与关闭按钮自绘。
             let resp = egui::Modal::new(egui::Id::new("keys_modal")).show(ctx, |ui| {
                 self.ui_keys_edit(ui, &mut d, &mut close);
             });
-            if !close && !resp.should_close() {
+            // 关闭条件不用 resp.should_close()：它包含「按 Esc 关闭」，而用户可能正要把
+            // 快捷键设置为 Esc（录制组件会捕获 Esc）。此处仅点遮罩关闭，Esc 留给录制组件。
+            if !close && !resp.backdrop_response.clicked() {
                 self.keys_edit = Some(d);
             }
         }
 
-        // 确认对话框（模态，标题栏带关闭按钮）
+        // 确认对话框：同样官方 Modal。
         if self.confirm.is_some() {
             let mut close = false;
             let resp = egui::Modal::new(egui::Id::new("confirm_modal")).show(ctx, |ui| {
-                Self::modal_header(ui, "确认", &mut close);
-                let inner = self.ui_confirm(ui);
-                close = close || inner;
+                close = close || self.ui_confirm(ui);
             });
             if close || resp.should_close() {
                 self.confirm = None;
@@ -302,6 +319,25 @@ impl EditorApp {
                 .clicked()
             {
                 self.make_backup();
+            }
+            ui.separator();
+            // 主题切换：参考官方样式的 ☀/🌙 图标钮（深色时显示 ☀=切到浅色；浅色时显示 🌙=切到深色）。
+            // 大圆角的胶囊形状：宽度取 2×高、圆角半径取高的一半，与其余工具栏控件等高对齐。
+            let (icon, tip) = if self.dark_mode {
+                ("☀", T.theme_switch_light)
+            } else {
+                ("🌙", T.theme_switch_dark)
+            };
+            let clicked = ui
+                .add_sized(
+                    egui::vec2(CTRL_H * 2.0, CTRL_H),
+                    egui::Button::new(egui::RichText::new(icon).size(14.0))
+                        .corner_radius(egui::CornerRadius::same((CTRL_H / 2.0) as u8)),
+                )
+                .on_hover_text(tip)
+                .clicked();
+            if clicked {
+                self.dark_mode = !self.dark_mode;
             }
             ui.separator();
             // 搜索框：圆角容器内嵌输入框与「×」清除按钮，清除按钮仅在输入后显示。
@@ -476,27 +512,11 @@ impl EditorApp {
         }
     }
 
-    /// 模态框没有系统标题栏，统一自绘：左侧标题 + 右侧「×」关闭按钮。
-    fn modal_header(ui: &mut egui::Ui, title: &str, close: &mut bool) {
-        ui.horizontal(|ui| {
-            ui.label(RichText::new(title).strong().size(14.0));
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui
-                    .add(egui::Button::new(RichText::new("×").size(14.0)).frame(false))
-                    .on_hover_text(T.cancel)
-                    .clicked()
-                {
-                    *close = true;
-                }
-            });
-        });
-        ui.separator();
-    }
-
     fn ui_keys_edit(&mut self, ui: &mut egui::Ui, d: &mut KeysDraft, close: &mut bool) {
         ui.set_width(420.0);
-        Self::modal_header(ui, T.ed_keys_title, close);
-        ui.add_space(4.0);
+        // 官方 Modal 只提供居中遮罩容器，无内置标题栏/关闭按钮；标题作普通内容文字置于顶部。
+        ui.label(RichText::new(T.ed_keys_title).strong());
+        ui.add_space(6.0);
         // 标签 + 录制模式（替换 / 追加）
         ui.horizontal(|ui| {
             ui.label(RichText::new(T.ed_keys).strong());
@@ -511,22 +531,13 @@ impl EditorApp {
         // 不做全局按键嗅探，避免把输入框内正常打字误当作快捷键覆盖；组合键录入走下方「录制」器件。
         ui.horizontal(|ui| {
             ui.add(
-                egui::TextEdit::singleline(&mut d.keys)
-                    .hint_text(T.ed_keys_placeholder)
-                    .desired_width(300.0)
-                    .min_size(egui::vec2(0.0, 30.0)),
+                egui::TextEdit::singleline(&mut d.keys).hint_text(T.ed_keys_placeholder),
             );
-            // ② 成熟录制组件（egui-keybind）：点击后进入录制态，按下某组合键即按模式写入 d.keys。
-            // Keybind 尺寸取自 spacing().interact_size，临时调高使其与输入框等齐后恢复。
-            let prev_interact = ui.spacing().interact_size;
-            ui.spacing_mut().interact_size.y = 30.0;
+            // ② 成熟录制组件（egui-keybind）：点击后进入录制态，按下某组合键即按模式写入 d.keys，
+            // 并立即清空绑定，按钮固定显示预设的「录制」文本，不展示捕获到的组合键。
             let rec = ui
-                .add(
-                    egui_keybind::Keybind::new(&mut d.recorded, "keys_rec")
-                        .with_text(T.ed_keys_record),
-                )
+                .add(egui_keybind::Keybind::new(&mut d.recorded, "keys_rec").with_text(T.ed_keys_record))
                 .on_hover_text(T.ed_keys_record_tip);
-            ui.spacing_mut().interact_size = prev_interact;
             if rec.changed() {
                 if let Some(ks) = d.recorded.keyboard() {
                     let combo = windterm_format(ks);
@@ -539,6 +550,23 @@ impl EditorApp {
                 }
             }
         });
+        // ②.⑤ egui-winit 会把 Ctrl+C/X/V 拦截为剪贴板命令事件（原 Key 事件被移除），
+        // egui-keybind 的 Key 捕获因此录不到这三个组合键。录制态下据此事件反向补获。
+        if keys_recording(ui) {
+            if let Some(key) = ui.input(|i| i.events.iter().find_map(clipboard_event_key)) {
+                let combo = windterm_format(egui::KeyboardShortcut::new(egui::Modifiers::CTRL, key));
+                if d.mode == RecordMode::Append && !d.keys.is_empty() {
+                    d.keys.push_str(&combo);
+                } else {
+                    d.keys = combo;
+                }
+                // 与 Keybind 成功捕获一致：结束本次录制。
+                ui.ctx().memory_mut(|m| {
+                    *m.data
+                        .get_temp_mut_or_default::<bool>(ui.make_persistent_id("keys_rec")) = false;
+                });
+            }
+        }
         // ③ 有效性警告
         if let Some(w) = keys_warning(&d.keys) {
             ui.add_space(4.0);
@@ -549,18 +577,14 @@ impl EditorApp {
         ui.label(RichText::new(T.ed_keys_hint).weak().small());
         ui.label(RichText::new(T.ed_keys_capture_hint).weak().small().italics());
         ui.add_space(10.0);
-        // ⑤ 确定 / 取消（加大尺寸）
+        // ⑤ 确定 / 取消（默认尺寸）
         ui.horizontal(|ui| {
-            let ok = egui::Button::new(RichText::new(T.ok).strong().color(Color32::from_rgb(120, 220, 160)))
-                .min_size(egui::vec2(96.0, 34.0));
+            let ok = egui::Button::new(RichText::new(T.ok).strong().color(Color32::from_rgb(120, 220, 160)));
             if ui.add(ok).clicked() {
                 self.apply_keys_edit(d);
                 *close = true;
             }
-            if ui
-                .add(egui::Button::new(T.cancel).min_size(egui::vec2(96.0, 34.0)))
-                .clicked()
-            {
+            if ui.add(egui::Button::new(T.cancel)).clicked() {
                 *close = true;
             }
         });
@@ -585,7 +609,7 @@ impl EditorApp {
                 ui.label(T.msg_confirm_save_with_issues);
                 ui.horizontal(|ui| {
                     if ui
-                        .add(egui::Button::new(T.ok).min_size(egui::vec2(96.0, 32.0)))
+                        .add(egui::Button::new(T.ok))
                         .clicked()
                     {
                         // 强制带校验问题保存；失败信息由 try_save 显示在状态栏。
@@ -593,7 +617,7 @@ impl EditorApp {
                         self.try_save();
                     }
                     if ui
-                        .add(egui::Button::new(T.cancel).min_size(egui::vec2(96.0, 32.0)))
+                        .add(egui::Button::new(T.cancel))
                         .clicked()
                     {
                         close = true;
@@ -605,7 +629,7 @@ impl EditorApp {
                 ui.label(T.msg_unsaved_changes_detail);
                 ui.horizontal(|ui| {
                     if ui
-                        .add(egui::Button::new(T.btn_discard).min_size(egui::vec2(96.0, 32.0)))
+                        .add(egui::Button::new(T.btn_discard))
                         .clicked()
                     {
                         self.dirty = false;
@@ -613,7 +637,7 @@ impl EditorApp {
                         close = true;
                     }
                     if ui
-                        .add(egui::Button::new(T.btn_keep).min_size(egui::vec2(96.0, 32.0)))
+                        .add(egui::Button::new(T.btn_keep))
                         .clicked()
                     {
                         close = true;
@@ -625,14 +649,14 @@ impl EditorApp {
                 ui.label(RichText::new(path.display().to_string()).weak());
                 ui.horizontal(|ui| {
                     if ui
-                        .add(egui::Button::new(T.btn_discard).min_size(egui::vec2(96.0, 32.0)))
+                        .add(egui::Button::new(T.btn_discard))
                         .clicked()
                     {
                         self.open_path(&path);
                         close = true;
                     }
                     if ui
-                        .add(egui::Button::new(T.btn_keep).min_size(egui::vec2(96.0, 32.0)))
+                        .add(egui::Button::new(T.btn_keep))
                         .clicked()
                     {
                         close = true;
@@ -775,6 +799,24 @@ pub fn run_edittest(path: &Path) -> (Vec<String>, i32) {
 
     log.push("[PASS] 编辑器端到端自检全部通过".into());
     (log, 0)
+}
+
+/// 还原被 egui-winit 拦截为剪贴板命令的语义事件对应的 Ctrl 组合键（Copy↔C、Cut↔X、Paste↔V）。
+fn clipboard_event_key(e: &egui::Event) -> Option<egui::Key> {
+    match e {
+        egui::Event::Copy => Some(egui::Key::C),
+        egui::Event::Cut => Some(egui::Key::X),
+        egui::Event::Paste(_) => Some(egui::Key::V),
+        _ => None,
+    }
+}
+
+/// 录制组件（egui-keybind）是否正处于等待按键的录制态；与它共用同一记忆槽与 id。
+fn keys_recording(ui: &egui::Ui) -> bool {
+    ui.ctx().memory_mut(|m| {
+        *m.data
+            .get_temp_mut_or_default::<bool>(ui.make_persistent_id("keys_rec"))
+    })
 }
 
 /// 把 egui 录制得到的 KeyboardShortcut 转成 WindTerm 风格快捷键字符串。
@@ -1042,6 +1084,40 @@ mod tests {
             Key::J,
         );
         assert_eq!(windterm_format(bare), "j");
+    }
+
+    #[test]
+    fn clipboard_event_key_maps_copy_cut_paste() {
+        use egui::Key;
+        assert_eq!(clipboard_event_key(&egui::Event::Copy), Some(Key::C));
+        assert_eq!(clipboard_event_key(&egui::Event::Cut), Some(Key::X));
+        assert_eq!(clipboard_event_key(&egui::Event::Paste("abc".into())), Some(Key::V));
+        assert_eq!(
+            clipboard_event_key(&egui::Event::Key {
+                key: Key::Delete,
+                pressed: false,
+                repeat: false,
+                modifiers: egui::Modifiers::NONE,
+                physical_key: None,
+            }),
+            None
+        );
+    }
+
+    #[test]
+    fn windterm_format_uses_ctrl_prefix_for_clipboard_keys() {
+        assert_eq!(
+            windterm_format(egui::KeyboardShortcut::new(egui::Modifiers::CTRL, egui::Key::C)),
+            "<Ctrl+C>"
+        );
+        assert_eq!(
+            windterm_format(egui::KeyboardShortcut::new(egui::Modifiers::CTRL, egui::Key::X)),
+            "<Ctrl+X>"
+        );
+        assert_eq!(
+            windterm_format(egui::KeyboardShortcut::new(egui::Modifiers::CTRL, egui::Key::V)),
+            "<Ctrl+V>"
+        );
     }
 
     #[test]
