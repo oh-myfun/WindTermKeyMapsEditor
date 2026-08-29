@@ -298,7 +298,8 @@ impl EditorApp {
         ui.add_space(6.0);
         // 工具栏控件统一高度：按钮与搜索框对齐。
         const CTRL_H: f32 = 24.0;
-        ui.horizontal_wrapped(|ui| {
+        // 左：打开/保存/备份 + 搜索；主题切换（胶囊图标钮）经 right_to_left 推到右上角。
+        ui.horizontal(|ui| {
             if ui
                 .add(egui::Button::new(T.open).min_size(egui::vec2(0.0, CTRL_H)))
                 .on_hover_text(T.open_tip)
@@ -319,25 +320,6 @@ impl EditorApp {
                 .clicked()
             {
                 self.make_backup();
-            }
-            ui.separator();
-            // 主题切换：参考官方样式的 ☀/🌙 图标钮（深色时显示 ☀=切到浅色；浅色时显示 🌙=切到深色）。
-            // 大圆角的胶囊形状：宽度取 2×高、圆角半径取高的一半，与其余工具栏控件等高对齐。
-            let (icon, tip) = if self.dark_mode {
-                ("☀", T.theme_switch_light)
-            } else {
-                ("🌙", T.theme_switch_dark)
-            };
-            let clicked = ui
-                .add_sized(
-                    egui::vec2(CTRL_H * 2.0, CTRL_H),
-                    egui::Button::new(egui::RichText::new(icon).size(14.0))
-                        .corner_radius(egui::CornerRadius::same((CTRL_H / 2.0) as u8)),
-                )
-                .on_hover_text(tip)
-                .clicked();
-            if clicked {
-                self.dark_mode = !self.dark_mode;
             }
             ui.separator();
             // 搜索框：圆角容器内嵌输入框与「×」清除按钮，清除按钮仅在输入后显示。
@@ -367,6 +349,25 @@ impl EditorApp {
                         }
                     });
                 });
+            // 右上角：主题切换胶囊按钮（深色→☀=切浅色；浅色→🌙=切深色）
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                let (icon, tip) = if self.dark_mode {
+                    ("☀", T.theme_switch_light)
+                } else {
+                    ("🌙", T.theme_switch_dark)
+                };
+                if ui
+                    .add_sized(
+                        egui::vec2(CTRL_H * 2.0, CTRL_H),
+                        egui::Button::new(egui::RichText::new(icon).size(14.0))
+                            .corner_radius(egui::CornerRadius::same((CTRL_H / 2.0) as u8)),
+                    )
+                    .on_hover_text(tip)
+                    .clicked()
+                {
+                    self.dark_mode = !self.dark_mode;
+                }
+            });
         });
         ui.add_space(6.0);
     }
@@ -561,25 +562,28 @@ impl EditorApp {
                     d.recorded = egui_keybind::Shortcut::default();
                 }
             }
-        });
-        // ②.⑤ egui-winit 会把 Ctrl+C/X/V 拦截为剪贴板命令事件（原 Key 事件被移除），
-        // egui-keybind 的 Key 捕获因此录不到这三个组合键。录制态下据此事件反向补获。
-        if keys_recording(ui) {
-            if let Some(key) = ui.input(|i| i.events.iter().find_map(clipboard_event_key)) {
-                let combo =
-                    windterm_format(egui::KeyboardShortcut::new(egui::Modifiers::CTRL, key));
-                if d.mode == RecordMode::Append && !d.keys.is_empty() {
-                    d.keys.push_str(&combo);
-                } else {
-                    d.keys = combo;
+            // ②.⑤ egui-winit 会把 Ctrl+C/X/V 拦截为剪贴板命令事件（原 Key 事件被移除），
+            // egui-keybind 的 Key 捕获因此录不到这三个组合键。录制态下据此事件反向补获。
+            // 必须与本 horizontal 内的 Keybind 共用同一父 ui.id：记忆槽 = make_persistent_id(Id::new("keys_rec"))
+            // 依赖外层 ui.id，放到 horizontal 之外读的就是外层 ui.id→不同的槽，永远读到 false。
+            if keys_recording(ui) {
+                if let Some(key) = ui.input(|i| i.events.iter().find_map(clipboard_event_key)) {
+                    let combo =
+                        windterm_format(egui::KeyboardShortcut::new(egui::Modifiers::CTRL, key));
+                    if d.mode == RecordMode::Append && !d.keys.is_empty() {
+                        d.keys.push_str(&combo);
+                    } else {
+                        d.keys = combo;
+                    }
+                    // 与 Keybind 成功捕获一致：结束本次录制（用同一内层 ui 写同一槽）。
+                    ui.ctx().memory_mut(|m| {
+                        *m.data.get_temp_mut_or_default::<bool>(
+                            ui.make_persistent_id(egui::Id::new("keys_rec")),
+                        ) = false;
+                    });
                 }
-                // 与 Keybind 成功捕获一致：结束本次录制。
-                ui.ctx().memory_mut(|m| {
-                    *m.data
-                        .get_temp_mut_or_default::<bool>(ui.make_persistent_id("keys_rec")) = false;
-                });
             }
-        }
+        });
         // ③ 有效性警告
         if let Some(w) = keys_warning(&d.keys) {
             ui.add_space(4.0);
@@ -827,11 +831,14 @@ fn clipboard_event_key(e: &egui::Event) -> Option<egui::Key> {
     }
 }
 
-/// 录制组件（egui-keybind）是否正处于等待按键的录制态；与它共用同一记忆槽与 id。
+/// 录制组件（egui-keybind）是否正处于等待按键的录制态。
+/// 必须读与 Keybind 完全相同的记忆槽：`make_persistent_id(Id::new("keys_rec"))`。
+/// 若退化为 `make_persistent_id("keys_rec")`，两者哈希路径不同（&str 与 Id::new 的 u64），槽不一致，
+/// 这里将永远读到 false，Ctrl+C/X/V 的剪贴板事件补获（见 `ui_keys_edit`）便不会触发。
 fn keys_recording(ui: &egui::Ui) -> bool {
     ui.ctx().memory_mut(|m| {
         *m.data
-            .get_temp_mut_or_default::<bool>(ui.make_persistent_id("keys_rec"))
+            .get_temp_mut_or_default::<bool>(ui.make_persistent_id(egui::Id::new("keys_rec")))
     })
 }
 

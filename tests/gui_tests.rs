@@ -547,6 +547,50 @@ fn theme_toggle_switches_dark_light() {
 }
 
 #[test]
+fn theme_toggle_button_anchored_to_top_right() {
+    let mut h = harness_for(vec![ent("<Ctrl+C>", "Text.Copy")]);
+    h.step();
+    // 主题按钮的右缘应贴近工具栏右边界（右上角），而非随左侧控件流排布。
+    let theme = h.get_by_label("☀"); // 深色默认显示 ☀
+    let r = theme.rect();
+    let panel_w = 980.0;
+    assert!(
+        r.right() > panel_w - 60.0,
+        "主题按钮应贴在右上角（right={:.1}, panel_w={panel_w}）",
+        r.right()
+    );
+}
+
+#[test]
+fn record_clipboard_copy_captures_ctrl_c() {
+    // 复现 winit 把 Ctrl+C 翻译为 Event::Copy（同时移除 Key 事件）的真实路径：
+    // 录制态下注入 Copy 事件，应被补获为 <Ctrl+C> 并替换原值 <Ctrl+V>。
+    let mut h = harness_for(vec![ent("<Ctrl+V>", "Text.Paste")]);
+    open_keys_dialog(&mut h, "<Ctrl+V>");
+    {
+        let rec = record_button(&h);
+        rec.click_accesskit();
+    }
+    h.step();
+    h.step();
+    h.event(egui::Event::Copy);
+    h.step();
+    h.step();
+    {
+        let applied = keys_input(&h);
+        assert_eq!(
+            applied
+                .accesskit_node()
+                .value()
+                .map(|v| v.to_string())
+                .as_deref(),
+            Some("<Ctrl+C>"),
+            "录制态注入 Copy 事件应写入 <Ctrl+C>"
+        );
+    }
+}
+
+#[test]
 fn zoom_event_changes_pixels_per_point() {
     let mut h = harness_for(vec![ent("<Ctrl+C>", "Text.Copy")]);
     h.step();
