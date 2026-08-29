@@ -381,9 +381,7 @@ impl EditorApp {
 
         let rows = self.display_rows();
         if rows.is_empty() {
-            ui.centered_and_justified(|ui| {
-                ui.label(RichText::new(T.no_match).weak().size(16.0))
-            });
+            ui.centered_and_justified(|ui| ui.label(RichText::new(T.no_match).weak().size(16.0)));
             return;
         }
 
@@ -410,12 +408,17 @@ impl EditorApp {
 
                             match &e.action {
                                 Some(a) => {
-                                    ui.label(RichText::new(a).monospace().color(Color32::from_rgb(140, 200, 240)));
+                                    ui.label(
+                                        RichText::new(a)
+                                            .monospace()
+                                            .color(Color32::from_rgb(140, 200, 240)),
+                                    );
                                     ui.label(RichText::new(action_description(a)));
                                 }
                                 None => {
                                     ui.label(
-                                        RichText::new(T.op_script).color(Color32::from_rgb(240, 170, 90)),
+                                        RichText::new(T.op_script)
+                                            .color(Color32::from_rgb(240, 170, 90)),
                                     );
                                     let preview = e.target_preview(60);
                                     ui.label(RichText::new(preview).weak());
@@ -475,7 +478,11 @@ impl EditorApp {
                 .as_deref()
                 .map(|a| action_description(a).to_lowercase().contains(lower))
                 .unwrap_or(false)
-            || e.script.as_deref().unwrap_or("").to_lowercase().contains(lower)
+            || e.script
+                .as_deref()
+                .unwrap_or("")
+                .to_lowercase()
+                .contains(lower)
     }
 
     fn sort_key(&self, col: SortCol, idx: usize) -> String {
@@ -496,7 +503,11 @@ impl EditorApp {
         let active = self.sort.map(|s| s.col) == Some(col);
         let asc = self.sort.map(|s| s.asc).unwrap_or(true);
         let arrow = if active {
-            if asc { " ▲" } else { " ▼" }
+            if asc {
+                " ▲"
+            } else {
+                " ▼"
+            }
         } else {
             ""
         };
@@ -530,13 +541,14 @@ impl EditorApp {
         // ① 自由文本编辑：兼容 <Ctrl+...>、vim 正则、裸字符。
         // 不做全局按键嗅探，避免把输入框内正常打字误当作快捷键覆盖；组合键录入走下方「录制」器件。
         ui.horizontal(|ui| {
-            ui.add(
-                egui::TextEdit::singleline(&mut d.keys).hint_text(T.ed_keys_placeholder),
-            );
+            ui.add(egui::TextEdit::singleline(&mut d.keys).hint_text(T.ed_keys_placeholder));
             // ② 成熟录制组件（egui-keybind）：点击后进入录制态，按下某组合键即按模式写入 d.keys，
             // 并立即清空绑定，按钮固定显示预设的「录制」文本，不展示捕获到的组合键。
             let rec = ui
-                .add(egui_keybind::Keybind::new(&mut d.recorded, "keys_rec").with_text(T.ed_keys_record))
+                .add(
+                    egui_keybind::Keybind::new(&mut d.recorded, "keys_rec")
+                        .with_text(T.ed_keys_record),
+                )
                 .on_hover_text(T.ed_keys_record_tip);
             if rec.changed() {
                 if let Some(ks) = d.recorded.keyboard() {
@@ -554,7 +566,8 @@ impl EditorApp {
         // egui-keybind 的 Key 捕获因此录不到这三个组合键。录制态下据此事件反向补获。
         if keys_recording(ui) {
             if let Some(key) = ui.input(|i| i.events.iter().find_map(clipboard_event_key)) {
-                let combo = windterm_format(egui::KeyboardShortcut::new(egui::Modifiers::CTRL, key));
+                let combo =
+                    windterm_format(egui::KeyboardShortcut::new(egui::Modifiers::CTRL, key));
                 if d.mode == RecordMode::Append && !d.keys.is_empty() {
                     d.keys.push_str(&combo);
                 } else {
@@ -575,11 +588,20 @@ impl EditorApp {
         // ④ 提示文本：置于确认/取消按钮之上
         ui.add_space(10.0);
         ui.label(RichText::new(T.ed_keys_hint).weak().small());
-        ui.label(RichText::new(T.ed_keys_capture_hint).weak().small().italics());
+        ui.label(
+            RichText::new(T.ed_keys_capture_hint)
+                .weak()
+                .small()
+                .italics(),
+        );
         ui.add_space(10.0);
         // ⑤ 确定 / 取消（默认尺寸）
         ui.horizontal(|ui| {
-            let ok = egui::Button::new(RichText::new(T.ok).strong().color(Color32::from_rgb(120, 220, 160)));
+            let ok = egui::Button::new(
+                RichText::new(T.ok)
+                    .strong()
+                    .color(Color32::from_rgb(120, 220, 160)),
+            );
             if ui.add(ok).clicked() {
                 self.apply_keys_edit(d);
                 *close = true;
@@ -600,26 +622,25 @@ impl EditorApp {
         match c {
             Confirm::SaveWithIssues { issues } => {
                 ui.label(T.msg_validation_issues);
-                egui::ScrollArea::vertical().max_height(120.0).show(ui, |ui| {
-                    for it in &issues {
-                        ui.label(RichText::new(format!(" • {it}")).color(Color32::from_rgb(240, 170, 90)));
-                    }
-                });
+                egui::ScrollArea::vertical()
+                    .max_height(120.0)
+                    .show(ui, |ui| {
+                        for it in &issues {
+                            ui.label(
+                                RichText::new(format!(" • {it}"))
+                                    .color(Color32::from_rgb(240, 170, 90)),
+                            );
+                        }
+                    });
                 ui.add_space(6.0);
                 ui.label(T.msg_confirm_save_with_issues);
                 ui.horizontal(|ui| {
-                    if ui
-                        .add(egui::Button::new(T.ok))
-                        .clicked()
-                    {
+                    if ui.add(egui::Button::new(T.ok)).clicked() {
                         // 强制带校验问题保存；失败信息由 try_save 显示在状态栏。
                         close = true;
                         self.try_save();
                     }
-                    if ui
-                        .add(egui::Button::new(T.cancel))
-                        .clicked()
-                    {
+                    if ui.add(egui::Button::new(T.cancel)).clicked() {
                         close = true;
                     }
                 });
@@ -628,18 +649,12 @@ impl EditorApp {
                 ui.label(T.msg_unsaved_changes);
                 ui.label(T.msg_unsaved_changes_detail);
                 ui.horizontal(|ui| {
-                    if ui
-                        .add(egui::Button::new(T.btn_discard))
-                        .clicked()
-                    {
+                    if ui.add(egui::Button::new(T.btn_discard)).clicked() {
                         self.dirty = false;
                         ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
                         close = true;
                     }
-                    if ui
-                        .add(egui::Button::new(T.btn_keep))
-                        .clicked()
-                    {
+                    if ui.add(egui::Button::new(T.btn_keep)).clicked() {
                         close = true;
                     }
                 });
@@ -648,17 +663,11 @@ impl EditorApp {
                 ui.label(T.msg_open_replace);
                 ui.label(RichText::new(path.display().to_string()).weak());
                 ui.horizontal(|ui| {
-                    if ui
-                        .add(egui::Button::new(T.btn_discard))
-                        .clicked()
-                    {
+                    if ui.add(egui::Button::new(T.btn_discard)).clicked() {
                         self.open_path(&path);
                         close = true;
                     }
-                    if ui
-                        .add(egui::Button::new(T.btn_keep))
-                        .clicked()
-                    {
+                    if ui.add(egui::Button::new(T.btn_keep)).clicked() {
                         close = true;
                     }
                 });
@@ -692,7 +701,10 @@ impl EditorApp {
     /// 匹配真实文件后缀：wind.keymaps 扩展名是 keymaps，并非 json。
     fn file_dialog() -> rfd::FileDialog {
         rfd::FileDialog::new()
-            .add_filter("WindTerm 配置", &["keymaps", "json", "txt", "conf", "variables"])
+            .add_filter(
+                "WindTerm 配置",
+                &["keymaps", "json", "txt", "conf", "variables"],
+            )
             .add_filter("所有文件", &["*"])
     }
 
@@ -709,7 +721,10 @@ impl EditorApp {
 
 // 供 main 调用的辅助：自动定位程序旁 global/wind.keymaps
 pub fn auto_locate_keymaps(exe_dir: &Path) -> Option<PathBuf> {
-    let candidates = [exe_dir.join("global/wind.keymaps"), exe_dir.join("wind.keymaps")];
+    let candidates = [
+        exe_dir.join("global/wind.keymaps"),
+        exe_dir.join("wind.keymaps"),
+    ];
     candidates.into_iter().find(|p| p.exists())
 }
 
@@ -734,11 +749,7 @@ pub fn run_edittest(path: &Path) -> (Vec<String>, i32) {
     }
     log.push(format!("[OK] 打开 {} 条", original.len()));
 
-    let Some(idx) = original
-        .entries
-        .iter()
-        .position(|e| e.action.is_some())
-    else {
+    let Some(idx) = original.entries.iter().position(|e| e.action.is_some()) else {
         log_fail!(log, "未找到带 Action 的条目".to_string());
     };
 
@@ -746,9 +757,14 @@ pub fn run_edittest(path: &Path) -> (Vec<String>, i32) {
     let zh = action_description("Text.Find");
     let fallback = action_description("No.Such.Action");
     if zh == "Text.Find" || fallback != "No.Such.Action" {
-        log_fail!(log, format!("action_description 异常：zh={zh:?} fallback={fallback:?}"));
+        log_fail!(
+            log,
+            format!("action_description 异常：zh={zh:?} fallback={fallback:?}")
+        );
     }
-    log.push(format!("[OK] 中文描述：Text.Find → {zh}（未知动作回退原名）"));
+    log.push(format!(
+        "[OK] 中文描述：Text.Find → {zh}（未知动作回退原名）"
+    ));
 
     let mut app = EditorApp::new();
     app.open_path(path);
@@ -780,7 +796,7 @@ pub fn run_edittest(path: &Path) -> (Vec<String>, i32) {
     if e.keys != "<Ctrl+F11>e2e" {
         log_fail!(log, "保存后重载 keys 与编辑不一致".to_string());
     }
-    if &e.action != &original.entries[idx].action || &e.script != &original.entries[idx].script {
+    if e.action != original.entries[idx].action || e.script != original.entries[idx].script {
         log_fail!(log, "修改 keys 不应改动 action/script".to_string());
     }
     log.push("[OK] 保存→重载：仅 keys 变更且已持久化，action/script 未受影响".into());
@@ -871,14 +887,26 @@ fn is_known_key_token(p: &str) -> bool {
     }
     // 具名功能键
     const NAMED: &[&str] = &[
-        "enter", "tab", "backspace", "delete", "insert", "home", "end", "pageup", "pagedown",
-        "up", "down", "left", "right",
+        "enter",
+        "tab",
+        "backspace",
+        "delete",
+        "insert",
+        "home",
+        "end",
+        "pageup",
+        "pagedown",
+        "up",
+        "down",
+        "left",
+        "right",
     ];
     if NAMED.contains(&lower.as_str()) {
         return true;
     }
     // F1..=F24
-    if lower.starts_with('f') && lower.len() >= 2 && lower[1..].chars().all(|c| c.is_ascii_digit()) {
+    if lower.starts_with('f') && lower.len() >= 2 && lower[1..].chars().all(|c| c.is_ascii_digit())
+    {
         if let Ok(n) = lower[1..].parse::<u32>() {
             return (1..=24).contains(&n);
         }
@@ -916,14 +944,17 @@ fn combo_string(key: egui::Key, modifiers: &egui::Modifiers) -> Option<String> {
 fn key_to_name(k: egui::Key) -> String {
     use egui::Key::*;
     match k {
-        l @ (A | B | C | D | E | F | G | H | I | J | K | L | M | N | O | P | Q | R | S | T | U | V | W | X | Y | Z) => {
+        l @ (A | B | C | D | E | F | G | H | I | J | K | L | M | N | O | P | Q | R | S | T | U
+        | V | W | X | Y | Z) => {
             format!("{l:?}")
         }
         Num0 | Num1 | Num2 | Num3 | Num4 | Num5 | Num6 | Num7 | Num8 | Num9 => {
             let digit = (k as usize) - (Num0 as usize);
             digit.to_string()
         }
-        f @ (F1 | F2 | F3 | F4 | F5 | F6 | F7 | F8 | F9 | F10 | F11 | F12 | F13 | F14 | F15 | F16 | F17 | F18 | F19 | F20 | F21 | F22 | F23 | F24 | F25 | F26 | F27 | F28 | F29 | F30 | F31 | F32 | F33 | F34 | F35) => {
+        f @ (F1 | F2 | F3 | F4 | F5 | F6 | F7 | F8 | F9 | F10 | F11 | F12 | F13 | F14 | F15
+        | F16 | F17 | F18 | F19 | F20 | F21 | F22 | F23 | F24 | F25 | F26 | F27 | F28
+        | F29 | F30 | F31 | F32 | F33 | F34 | F35) => {
             format!("{f:?}")
         }
         ArrowUp => "Up".into(),
@@ -965,10 +996,41 @@ fn is_named_key(k: egui::Key) -> bool {
     use egui::Key::*;
     matches!(
         k,
-        Space | Enter | Tab | Escape | Backspace | Delete | Insert | Home | End
-            | PageUp | PageDown | ArrowUp | ArrowDown | ArrowLeft | ArrowRight
-            | F1 | F2 | F3 | F4 | F5 | F6 | F7 | F8 | F9 | F10 | F11 | F12 | F13
-            | F14 | F15 | F16 | F17 | F18 | F19 | F20
+        Space
+            | Enter
+            | Tab
+            | Escape
+            | Backspace
+            | Delete
+            | Insert
+            | Home
+            | End
+            | PageUp
+            | PageDown
+            | ArrowUp
+            | ArrowDown
+            | ArrowLeft
+            | ArrowRight
+            | F1
+            | F2
+            | F3
+            | F4
+            | F5
+            | F6
+            | F7
+            | F8
+            | F9
+            | F10
+            | F11
+            | F12
+            | F13
+            | F14
+            | F15
+            | F16
+            | F17
+            | F18
+            | F19
+            | F20
     )
 }
 
@@ -1031,7 +1093,10 @@ mod tests {
 
     #[test]
     fn combo_plain_modifiers_are_wrapped() {
-        assert_eq!(combo_string(egui::Key::A, &mods(true, false, false)), Some("<Ctrl+A>".into()));
+        assert_eq!(
+            combo_string(egui::Key::A, &mods(true, false, false)),
+            Some("<Ctrl+A>".into())
+        );
         assert_eq!(
             combo_string(egui::Key::A, &mods(true, false, true)),
             Some("<Ctrl+Shift+A>".into())
@@ -1045,10 +1110,22 @@ mod tests {
     #[test]
     fn combo_bare_keys() {
         // 无修饰键：字母返回小写裸字符，数字返回裸字符，功能/方向/空格等加尖括号。
-        assert_eq!(combo_string(egui::Key::A, &mods(false, false, false)), Some("a".into()));
-        assert_eq!(combo_string(egui::Key::I, &mods(false, false, false)), Some("i".into()));
-        assert_eq!(combo_string(egui::Key::Num5, &mods(false, false, false)), Some("5".into()));
-        assert_eq!(combo_string(egui::Key::F11, &mods(false, false, false)), Some("<F11>".into()));
+        assert_eq!(
+            combo_string(egui::Key::A, &mods(false, false, false)),
+            Some("a".into())
+        );
+        assert_eq!(
+            combo_string(egui::Key::I, &mods(false, false, false)),
+            Some("i".into())
+        );
+        assert_eq!(
+            combo_string(egui::Key::Num5, &mods(false, false, false)),
+            Some("5".into())
+        );
+        assert_eq!(
+            combo_string(egui::Key::F11, &mods(false, false, false)),
+            Some("<F11>".into())
+        );
         assert_eq!(
             combo_string(egui::Key::ArrowUp, &mods(false, false, false)),
             Some("<Up>".into())
@@ -1091,7 +1168,10 @@ mod tests {
         use egui::Key;
         assert_eq!(clipboard_event_key(&egui::Event::Copy), Some(Key::C));
         assert_eq!(clipboard_event_key(&egui::Event::Cut), Some(Key::X));
-        assert_eq!(clipboard_event_key(&egui::Event::Paste("abc".into())), Some(Key::V));
+        assert_eq!(
+            clipboard_event_key(&egui::Event::Paste("abc".into())),
+            Some(Key::V)
+        );
         assert_eq!(
             clipboard_event_key(&egui::Event::Key {
                 key: Key::Delete,
@@ -1107,15 +1187,24 @@ mod tests {
     #[test]
     fn windterm_format_uses_ctrl_prefix_for_clipboard_keys() {
         assert_eq!(
-            windterm_format(egui::KeyboardShortcut::new(egui::Modifiers::CTRL, egui::Key::C)),
+            windterm_format(egui::KeyboardShortcut::new(
+                egui::Modifiers::CTRL,
+                egui::Key::C
+            )),
             "<Ctrl+C>"
         );
         assert_eq!(
-            windterm_format(egui::KeyboardShortcut::new(egui::Modifiers::CTRL, egui::Key::X)),
+            windterm_format(egui::KeyboardShortcut::new(
+                egui::Modifiers::CTRL,
+                egui::Key::X
+            )),
             "<Ctrl+X>"
         );
         assert_eq!(
-            windterm_format(egui::KeyboardShortcut::new(egui::Modifiers::CTRL, egui::Key::V)),
+            windterm_format(egui::KeyboardShortcut::new(
+                egui::Modifiers::CTRL,
+                egui::Key::V
+            )),
             "<Ctrl+V>"
         );
     }
@@ -1167,11 +1256,20 @@ mod tests {
             ent("A", Some("Text.A")),
             ent("C", Some("Text.M")),
         ]);
-        a.sort = Some(SortState { col: SortCol::Keys, asc: true });
+        a.sort = Some(SortState {
+            col: SortCol::Keys,
+            asc: true,
+        });
         assert_eq!(a.display_rows(), vec![1, 0, 2]); // A < B < C
-        a.sort = Some(SortState { col: SortCol::Keys, asc: false });
+        a.sort = Some(SortState {
+            col: SortCol::Keys,
+            asc: false,
+        });
         assert_eq!(a.display_rows(), vec![2, 0, 1]); // C > B > A
-        a.sort = Some(SortState { col: SortCol::Action, asc: true });
+        a.sort = Some(SortState {
+            col: SortCol::Action,
+            asc: true,
+        });
         assert_eq!(a.display_rows(), vec![1, 2, 0]); // Text.A < Text.M < Text.Z
     }
 

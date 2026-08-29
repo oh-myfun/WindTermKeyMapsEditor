@@ -50,8 +50,7 @@ fn harness_for(entries: Vec<KeymapEntry>) -> Harness<'static, EditorApp> {
 /// 表格中所有 keys 单元格（形如 `<Ctrl+..>` / `(?P<..>` 的可点击按钮）的 label，按树顺序。
 fn keys_cell_labels(h: &Harness<'_, EditorApp>) -> Vec<String> {
     h.query_all_by(|n| {
-        n.role() == egui::accesskit::Role::Button
-            && n.label().is_some_and(|l| l.starts_with('<'))
+        n.role() == egui::accesskit::Role::Button && n.label().is_some_and(|l| l.starts_with('<'))
     })
     .map(|n| n.accesskit_node().label().unwrap_or_default().to_string())
     .collect()
@@ -124,7 +123,10 @@ fn clicking_keys_header_sorts_and_toggles() {
     ]);
     h.step();
     // 初始按文件顺序
-    assert_eq!(keys_cell_labels(&h), vec!["<Ctrl+F>", "<Ctrl+A>", "<Ctrl+C>"]);
+    assert_eq!(
+        keys_cell_labels(&h),
+        vec!["<Ctrl+F>", "<Ctrl+A>", "<Ctrl+C>"]
+    );
     // 点击「快捷键」列头 → 升序
     click_sort_header(&mut h, "快捷键");
     assert_eq!(
@@ -149,7 +151,10 @@ fn clicking_action_header_sorts_by_action() {
     h.step();
     click_sort_header(&mut h, "操作名");
     // 按 action 名排序，keys 应随之排列
-    assert_eq!(keys_cell_labels(&h), vec!["<Ctrl+A>", "<Ctrl+F>", "<Ctrl+C>"]);
+    assert_eq!(
+        keys_cell_labels(&h),
+        vec!["<Ctrl+A>", "<Ctrl+F>", "<Ctrl+C>"]
+    );
 }
 
 // ---------- 搜索过滤 ----------
@@ -158,12 +163,16 @@ fn clicking_action_header_sorts_by_action() {
 /// 且 Node 借用 h，每次用完即丢弃，避免阻塞后续 &mut h。
 fn type_search(h: &mut Harness<'_, EditorApp>, text: &str) {
     {
-        let s = h.query_by_role(egui::accesskit::Role::TextInput).expect("应有搜索框");
+        let s = h
+            .query_by_role(egui::accesskit::Role::TextInput)
+            .expect("应有搜索框");
         s.focus();
     }
     h.step();
     {
-        let s = h.query_by_role(egui::accesskit::Role::TextInput).expect("应有搜索框");
+        let s = h
+            .query_by_role(egui::accesskit::Role::TextInput)
+            .expect("应有搜索框");
         s.type_text(text);
     }
     h.step();
@@ -179,10 +188,7 @@ fn search_filters_by_key_substring_case_insensitive() {
     h.step();
     type_search(&mut h, "ctrl+f");
     assert!(h.query_by_label("Text.Find").is_some(), "应保留匹配行");
-    assert!(
-        h.query_by_label("Text.Copy").is_none(),
-        "应过滤掉不匹配行"
-    );
+    assert!(h.query_by_label("Text.Copy").is_none(), "应过滤掉不匹配行");
     assert!(
         h.query_by_label("条目总数: 1 / 3").is_some(),
         "状态栏应显示过滤计数"
@@ -238,7 +244,11 @@ fn keys_input<'t>(h: &'t Harness<'_, EditorApp>) -> egui_kittest::Node<'t> {
     let mut it = h.query_all_by(|n| n.role() == egui::accesskit::Role::TextInput);
     let mut best = it.next().unwrap_or_else(|| panic!("未找到任何输入框"));
     for n in it {
-        let y = n.accesskit_node().raw_bounds().map(|r| (r.y0 + r.y1) / 2.0).unwrap_or(-1.0);
+        let y = n
+            .accesskit_node()
+            .raw_bounds()
+            .map(|r| (r.y0 + r.y1) / 2.0)
+            .unwrap_or(-1.0);
         let by = best
             .accesskit_node()
             .raw_bounds()
@@ -268,8 +278,7 @@ fn dump_text_inputs(h: &Harness<'_, EditorApp>) {
 /// Modal 无容器节点，全局范围内此 label 唯一，直接全局查询。
 fn record_button<'t>(h: &'t Harness<'_, EditorApp>) -> egui_kittest::Node<'t> {
     h.query_by(|n| {
-        n.role() == egui::accesskit::Role::Button
-            && n.label().is_some_and(|l| l.contains("录制"))
+        n.role() == egui::accesskit::Role::Button && n.label().is_some_and(|l| l.contains("录制"))
     })
     .unwrap_or_else(|| panic!("未找到录制按钮"))
 }
@@ -325,7 +334,11 @@ fn cancel_keeps_original_keys() {
     h.step();
     h.get_by_label("取消").click_accesskit();
     h.step();
-    assert_eq!(h.state().file.entries[0].keys, "<Ctrl+C>", "取消不应改动原值");
+    assert_eq!(
+        h.state().file.entries[0].keys,
+        "<Ctrl+C>",
+        "取消不应改动原值"
+    );
     assert!(!h.state().dirty, "取消不应标记未保存");
     assert!(h.state().keys_edit.is_none(), "取消后弹窗应关闭");
 }
@@ -348,7 +361,11 @@ fn record_button_captures_combo_in_windterm_format() {
     {
         let applied = keys_input(&h);
         assert_eq!(
-            applied.accesskit_node().value().map(|v| v.to_string()).as_deref(),
+            applied
+                .accesskit_node()
+                .value()
+                .map(|v| v.to_string())
+                .as_deref(),
             Some("<Ctrl+A>"),
             "录制后输入框应显示 <Ctrl+A>"
         );
@@ -382,7 +399,11 @@ fn record_esc_does_not_close_modal() {
     {
         let applied = keys_input(&h);
         assert_eq!(
-            applied.accesskit_node().value().map(|v| v.to_string()).as_deref(),
+            applied
+                .accesskit_node()
+                .value()
+                .map(|v| v.to_string())
+                .as_deref(),
             Some("<Esc>"),
             "录制 Esc 应写入为 <Esc>"
         );
@@ -409,7 +430,11 @@ fn record_button_append_mode_concatenates() {
     {
         let applied = keys_input(&h);
         assert_eq!(
-            applied.accesskit_node().value().map(|v| v.to_string()).as_deref(),
+            applied
+                .accesskit_node()
+                .value()
+                .map(|v| v.to_string())
+                .as_deref(),
             Some("<Ctrl+C><Ctrl+A>"),
             "追加模式应在原值后拼接 <Ctrl+A>"
         );
@@ -441,7 +466,11 @@ fn cancel_button_discards_draft() {
     h.get_by_label("取消").click_accesskit();
     h.step();
     assert!(h.state().keys_edit.is_none(), "取消后弹窗应消失");
-    assert_eq!(h.state().file.entries[0].keys, "<Ctrl+C>", "取消不应改动原值");
+    assert_eq!(
+        h.state().file.entries[0].keys,
+        "<Ctrl+C>",
+        "取消不应改动原值"
+    );
     assert!(!h.state().dirty);
 }
 
@@ -478,7 +507,10 @@ fn save_with_file_writes_and_clears_dirty() {
     h.get_by_label("保存").click();
     h.step();
     assert!(!h.state().dirty, "保存成功后应清除未保存标记");
-    assert!(h.query_by_label_contains("已保存").is_some(), "应显示保存成功消息");
+    assert!(
+        h.query_by_label_contains("已保存").is_some(),
+        "应显示保存成功消息"
+    );
     let text = std::fs::read_to_string(&path).unwrap_or_default();
     assert!(text.contains("Text.Copy"), "保存后文件应包含编辑内容");
     let _ = std::fs::remove_file(&path);

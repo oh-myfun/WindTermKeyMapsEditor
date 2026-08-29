@@ -81,11 +81,26 @@ pub struct ModeInfo {
 }
 
 pub const MODE_DESCRIPTIONS: &[ModeInfo] = &[
-    ModeInfo { mode: "normal", zh_desc: "普通（焦点在本地 shell）" },
-    ModeInfo { mode: "command", zh_desc: "命令模式（vim 风格操作）" },
-    ModeInfo { mode: "local", zh_desc: "本地视图" },
-    ModeInfo { mode: "remote", zh_desc: "远程会话视图" },
-    ModeInfo { mode: "widget", zh_desc: "小部件/面板" },
+    ModeInfo {
+        mode: "normal",
+        zh_desc: "普通（焦点在本地 shell）",
+    },
+    ModeInfo {
+        mode: "command",
+        zh_desc: "命令模式（vim 风格操作）",
+    },
+    ModeInfo {
+        mode: "local",
+        zh_desc: "本地视图",
+    },
+    ModeInfo {
+        mode: "remote",
+        zh_desc: "远程会话视图",
+    },
+    ModeInfo {
+        mode: "widget",
+        zh_desc: "小部件/面板",
+    },
 ];
 
 /// 整个 `wind.keymaps` 文件（顶层 JSON 数组的封装）。
@@ -194,7 +209,11 @@ mod tests {
         assert_eq!(f.entries[0].action.as_deref(), Some("Text.Copy"));
         assert!(f.entries[0].script.is_none());
         // script 多行内容保真
-        assert!(f.entries[2].script.as_deref().unwrap().contains("let x = window"));
+        assert!(f.entries[2]
+            .script
+            .as_deref()
+            .unwrap()
+            .contains("let x = window"));
     }
 
     #[test]
@@ -216,7 +235,10 @@ mod tests {
     #[test]
     fn invalid_json_errors() {
         assert!(KeymapFile::parse_json("not json {").is_err());
-        assert!(KeymapFile::parse_json("[{ \"keys\": 123 }]").is_err(), "keys 类型错误");
+        assert!(
+            KeymapFile::parse_json("[{ \"keys\": 123 }]").is_err(),
+            "keys 类型错误"
+        );
     }
 
     #[test]
@@ -243,7 +265,10 @@ mod tests {
 
     #[test]
     fn validate_reports_issues() {
-        let f = KeymapFile::parse_json(r#"[{"keys":"","modes":""},{"keys":"a","modes":"n","action":"X","script":"Y"}]"#).unwrap();
+        let f = KeymapFile::parse_json(
+            r#"[{"keys":"","modes":""},{"keys":"a","modes":"n","action":"X","script":"Y"}]"#,
+        )
+        .unwrap();
         let issues = f.validate();
         assert!(issues.iter().any(|s| s.contains("keys 为空")));
         assert!(issues.iter().any(|s| s.contains("同时存在")));
@@ -343,7 +368,10 @@ mod tests {
     #[test]
     fn mixed_case_modes_preserved_byte_for_byte() {
         // 大小写是区分语义的（如 Remote 与 remote），round-trip 不得改动。
-        let f = KeymapFile::parse_json(r#"[{"keys":"<Ctrl+D>","modes":"normal, Remote, Widget","action":"X"}]"#).unwrap();
+        let f = KeymapFile::parse_json(
+            r#"[{"keys":"<Ctrl+D>","modes":"normal, Remote, Widget","action":"X"}]"#,
+        )
+        .unwrap();
         let json = f.to_json_string().unwrap();
         assert!(json.contains("normal, Remote, Widget"));
         assert_eq!(KeymapFile::parse_json(&json).unwrap(), f);

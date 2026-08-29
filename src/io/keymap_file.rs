@@ -36,14 +36,15 @@ pub type Result<T> = std::result::Result<T, KeymapError>;
 /// 磁盘上某文件的目录 + 文件名，用于错误提示。
 fn ctx_of(path: &Path) -> String {
     match path.file_name().and_then(|s| s.to_str()) {
-        Some(name) => format!("{name}"),
+        Some(name) => name.to_string(),
         None => path.display().to_string(),
     }
 }
 
 /// 读取并解析一个 keymap 文件。
 pub fn read_keymap(path: &Path) -> Result<KeymapFile> {
-    let text = fs::read_to_string(path).map_err(|e| KeymapError::Io(e, format!("无法读取 {}", ctx_of(path))))?;
+    let text = fs::read_to_string(path)
+        .map_err(|e| KeymapError::Io(e, format!("无法读取 {}", ctx_of(path))))?;
     if text.trim().is_empty() {
         return Err(KeymapError::Empty);
     }
@@ -60,7 +61,8 @@ fn backup_path(path: &Path) -> PathBuf {
 /// 把当前文件备份为 `.bak`（存在则覆盖，保留最近一次）。
 pub fn create_backup(path: &Path) -> Result<PathBuf> {
     let bak = backup_path(path);
-    fs::copy(path, &bak).map_err(|e| KeymapError::Io(e, format!("无法创建备份 {}", ctx_of(&bak))))?;
+    fs::copy(path, &bak)
+        .map_err(|e| KeymapError::Io(e, format!("无法创建备份 {}", ctx_of(&bak))))?;
     Ok(bak)
 }
 
@@ -83,8 +85,10 @@ pub fn write_keymap(path: &Path, file: &KeymapFile) -> Result<()> {
     let parent = path.parent().unwrap_or_else(|| Path::new("."));
     let tmp = parent.join(format!(".{}.tmp", ctx_of(path)));
     {
-        let mut f = fs::File::create(&tmp).map_err(|e| KeymapError::Io(e, "无法创建临时文件".into()))?;
-        f.write_all(json.as_bytes()).map_err(|e| KeymapError::Io(e, "无法写入临时文件".into()))?;
+        let mut f =
+            fs::File::create(&tmp).map_err(|e| KeymapError::Io(e, "无法创建临时文件".into()))?;
+        f.write_all(json.as_bytes())
+            .map_err(|e| KeymapError::Io(e, "无法写入临时文件".into()))?;
     }
     // 写回（目标可能只读——力争使用可写语义）
     fs::rename(&tmp, path)
@@ -136,7 +140,7 @@ mod tests {
 
     #[test]
     fn missing_file_errors() {
-        let r = read_keymap(&Path::new("Z:/__no_such_file__.json"));
+        let r = read_keymap(Path::new("Z:/__no_such_file__.json"));
         assert!(matches!(r, Err(KeymapError::Io(..))));
     }
 
@@ -181,7 +185,7 @@ mod tests {
     fn write_keymap_to_missing_dir_errors() {
         let p = Path::new("Z:/__no_such_dir__/wind.keymaps");
         let f = KeymapFile::parse_json("[]").unwrap();
-        assert!(matches!(write_keymap(&p, &f), Err(KeymapError::Io(..))));
+        assert!(matches!(write_keymap(p, &f), Err(KeymapError::Io(..))));
     }
 
     #[test]
@@ -196,8 +200,10 @@ mod tests {
     #[test]
     fn save_as_overwrites_existing_without_backup() {
         let p = tmp_path("saveas_overwrite.json");
-        let a = KeymapFile::parse_json(r#"[{"keys":"<Ctrl+A>","modes":"normal","action":"X"}]"#).unwrap();
-        let b = KeymapFile::parse_json(r#"[{"keys":"<Ctrl+B>","modes":"command","action":"Y"}]"#).unwrap();
+        let a = KeymapFile::parse_json(r#"[{"keys":"<Ctrl+A>","modes":"normal","action":"X"}]"#)
+            .unwrap();
+        let b = KeymapFile::parse_json(r#"[{"keys":"<Ctrl+B>","modes":"command","action":"Y"}]"#)
+            .unwrap();
         save_as(&p, &a).unwrap();
         save_as(&p, &b).unwrap();
         assert_eq!(read_keymap(&p).unwrap(), b);
@@ -212,7 +218,10 @@ mod tests {
         fs::write(&p, "[]").unwrap();
         let bak = create_backup(&p).unwrap();
         assert_eq!(bak, backup_path(&p));
-        assert_eq!(bak.file_name().unwrap().to_str().unwrap(), "bak_name.json.bak");
+        assert_eq!(
+            bak.file_name().unwrap().to_str().unwrap(),
+            "bak_name.json.bak"
+        );
         fs::remove_file(&p).ok();
         fs::remove_file(&bak).ok();
     }

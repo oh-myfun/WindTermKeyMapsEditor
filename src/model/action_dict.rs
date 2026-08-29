@@ -12,7 +12,10 @@ pub const ACTION_DESCRIPTIONS: &[(&str, &str)] = &[
     ("Editor.SaveAs", "另存为"),
     ("FilerPane.AutoSyncTerminalFolder", "自动同步终端文件夹"),
     ("FilerPane.Cdup", "返回上层目录"),
-    ("FilerPane.CopyDirectoryPathToTerminal", "将目录路径复制到终端"),
+    (
+        "FilerPane.CopyDirectoryPathToTerminal",
+        "将目录路径复制到终端",
+    ),
     ("FilerPane.CopyFrom", "复制自"),
     ("FilerPane.CopySelectedNames", "复制名称"),
     ("FilerPane.CopySelectedNamesToTerminal", "复制名称到终端"),

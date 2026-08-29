@@ -8,7 +8,9 @@
 use std::path::{Path, PathBuf};
 
 use eframe::egui;
-use windterm_keymaps_editor::app::{auto_locate_keymaps, install_chinese_fonts, run_edittest, EditorApp};
+use windterm_keymaps_editor::app::{
+    auto_locate_keymaps, install_chinese_fonts, run_edittest, EditorApp,
+};
 use windterm_keymaps_editor::i18n::T;
 use windterm_keymaps_editor::io::{read_keymap, write_keymap};
 use windterm_keymaps_editor::model::{KeymapEntry, KeymapFile};
@@ -108,7 +110,13 @@ fn run_selftest(file: Option<&Path>) -> i32 {
                 .unwrap_or_else(|_| PathBuf::from("."))
                 .join("wind.keymaps");
             if !p.exists() {
-                return emit_fail(&mut log, format!("未指定目标文件，且当前目录无 wind.keymaps（{}）", p.display()));
+                return emit_fail(
+                    &mut log,
+                    format!(
+                        "未指定目标文件，且当前目录无 wind.keymaps（{}）",
+                        p.display()
+                    ),
+                );
             }
             p
         }
@@ -159,7 +167,10 @@ fn run_selftest(file: Option<&Path>) -> i32 {
         Err(e) => return emit_fail(&mut log, format!("重载失败：{e}")),
     };
     if reloaded.len() != n0 + 1 {
-        return emit_fail(&mut log, format!("重载条数应 {n0}+1，实际 {}", reloaded.len()));
+        return emit_fail(
+            &mut log,
+            format!("重载条数应 {n0}+1，实际 {}", reloaded.len()),
+        );
     }
     if !reloaded.entries.iter().any(|e| e.keys == sentinel) {
         return emit_fail(&mut log, "重载后未找到哨兵修改".into());
@@ -167,7 +178,10 @@ fn run_selftest(file: Option<&Path>) -> i32 {
     log.push("[OK] 重载后修改生效（条数 +1，哨兵键存在）".into());
 
     // 5) 序列化→再解析 round-trip 保真
-    match reloaded.to_json_string().and_then(|j| KeymapFile::parse_json(&j)) {
+    match reloaded
+        .to_json_string()
+        .and_then(|j| KeymapFile::parse_json(&j))
+    {
         Ok(back) if back == edited => log.push("[OK] 序列化 round-trip 值与编辑态一致".into()),
         Ok(_) => return emit_fail(&mut log, "round-trip 后值与编辑态不一致".into()),
         Err(e) => return emit_fail(&mut log, format!("round-trip 解析失败：{e}")),
@@ -194,7 +208,7 @@ fn emit_fail(log: &mut Vec<String>, m: String) -> i32 {
 }
 
 /// 把日志写入 CWD 下的 selftest.log，同时打到 stdout，返回退出码。
-fn emit(log: &mut Vec<String>, code: i32) -> i32 {
+fn emit(log: &mut [String], code: i32) -> i32 {
     use std::io::Write as _;
     let text = log.join("\r\n");
     let out = std::env::current_dir()
