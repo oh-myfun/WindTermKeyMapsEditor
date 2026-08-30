@@ -245,26 +245,31 @@ fn open_keys_dialog(h: &mut Harness<'_, EditorApp>, keys: &str) {
 
 /// 定位弹窗内的 keys 输入框。
 /// Modal（Area）在 accesskit 树里没有可挂靠的容器节点，标题只是普通 label；
-/// 因此改用位置区分：居中弹窗内的 keys 框比顶部工具栏的搜索框更靠下。
+/// 因此改用位置区分：窗口内 TextInput 按 y 从上到下为「工具栏搜索框 → keys 框 → modes 框」，
+/// 取第 2 个（keys 框），与 modes 输入框区分开。
 fn keys_input<'t>(h: &'t Harness<'_, EditorApp>) -> egui_kittest::Node<'t> {
-    let mut it = h.query_all_by(|n| n.role() == egui::accesskit::Role::TextInput);
-    let mut best = it.next().unwrap_or_else(|| panic!("未找到任何输入框"));
-    for n in it {
-        let y = n
+    let mut inputs: Vec<_> = h
+        .query_all_by(|n| n.role() == egui::accesskit::Role::TextInput)
+        .collect();
+    inputs.sort_by(|a, b| {
+        let ya = a
             .accesskit_node()
             .raw_bounds()
             .map(|r| (r.y0 + r.y1) / 2.0)
-            .unwrap_or(-1.0);
-        let by = best
+            .unwrap_or(f64::MAX);
+        let yb = b
             .accesskit_node()
             .raw_bounds()
             .map(|r| (r.y0 + r.y1) / 2.0)
-            .unwrap_or(-1.0);
-        if y > by {
-            best = n;
-        }
+            .unwrap_or(f64::MAX);
+        ya.partial_cmp(&yb).unwrap_or(std::cmp::Ordering::Equal)
+    });
+    if inputs.len() < 2 {
+        panic!("未找到 keys 输入框（仅 {} 个输入框）", inputs.len());
     }
-    best
+    // inputs 按 y 依次为：工具栏搜索框 → keys 框 →（本弹窗含模式编辑时）modes 框。
+    // keys 始终是第 2 个（index 1）。
+    inputs.remove(1)
 }
 
 #[allow(dead_code)]
@@ -347,6 +352,56 @@ fn cancel_keeps_original_keys() {
     );
     assert!(!h.state().dirty, "取消不应标记未保存");
     assert!(h.state().keys_edit.is_none(), "取消后弹窗应关闭");
+}
+
+#[test]
+fn keys_dialog_edits_modes_and_shows_descriptions() {
+    let mut h = harness_for(vec![ent("<Ctrl+C>", "Text.Copy")]);
+    open_keys_dialog(&mut h, "<Ctrl+C>");
+    // 模式说明区可见
+    assert!(
+        h.query_by_label_contains("模式说明").is_some(),
+        "应显示模式说明标题"
+    );
+    assert!(
+        h.query_by_label_contains("命令模式").is_some(),
+        "应显示 command 模式说明"
+    );
+    // 初始 modes = "normal"（ent 固定）；勾选 command → 追加为 "normal, command"
+    h.get_by_label("command").click();
+    h.step();
+    assert_eq!(
+        h.state().keys_edit.as_ref().map(|d| d.modes.as_str()),
+        Some("normal, command"),
+        "勾选 command 后草稿 modes 应追加"
+    );
+    // 确定生效并标记未保存
+    h.get_by_label("确定").click_accesskit();
+    h.step();
+    assert_eq!(h.state().file.entries[0].modes, "normal, command");
+    assert!(h.state().dirty, "改动模式后应标记未保存");
+}
+
+#[test]
+fn keys_dialog_modes_checkbox_toggle_writes_back_and_unchecks() {
+    let mut h = harness_for(vec![ent("<Ctrl+C>", "Text.Copy")]);
+    open_keys_dialog(&mut h, "<Ctrl+C>");
+    // 关闭 normal（初始即勾选）：normal 被移除 → modes 为空（表示全部模式）
+    h.get_by_label("normal").click();
+    h.step();
+    assert_eq!(
+        h.state().keys_edit.as_ref().map(|d| d.modes.as_str()),
+        Some(""),
+        "取消勾选 normal 后 modes 应为空"
+    );
+    // 再打开 normal → 恢复
+    h.get_by_label("normal").click();
+    h.step();
+    assert_eq!(
+        h.state().keys_edit.as_ref().map(|d| d.modes.as_str()),
+        Some("normal"),
+        "重新勾选 normal 后 modes 恢复"
+    );
 }
 
 #[test]
@@ -554,6 +609,7 @@ fn save_with_file_writes_and_clears_dirty() {
     a.apply_keys_edit(&KeysDraft {
         index: 0,
         keys: "<Ctrl+V>".into(),
+        modes: "normal".into(),
         recording: false,
         mode: RecordMode::Replace,
     });
@@ -888,5 +944,67 @@ fn emacs_modal_columns_fit_within_viewport() {
     assert!(
         max_right > 700.0,
         "Emacs 弹窗最右列(复位)右缘 {max_right} 过小，5 列可能未完整展开"
+    );
+}
+
+/// 回归断言：Emacs 弹窗「修改后」列点击应打开子编辑窗（复用主窗口快捷键录制控件），
+/// 编辑后确认写回该行草稿；同时保持表单底部按钮的计数基线（子窗含「确定/取消」按钮，
+/// 不混入主表单的行计数，也不破坏旧“复位按钮=预设条数”的断言）。
+#[test]
+fn emacs_after_col_reuses_shortcut_recorder() {
+    let mut h = harness_for(vec![
+        ent("<Ctrl+W>", "Window.CloseActiveView"),
+        ent("<Alt+B>", "Window.ShowPaletteMultiplexer"),
+        ent("<Ctrl+Left>", "Text.MoveToPreviousWordStart"),
+    ]);
+    h.step();
+    h.get_by_label("Emacs风格").click();
+    for _ in 0..8 {
+        h.step();
+    }
+    // 点击第一行（<Ctrl+A>）的“修改后”值按钮 → 应弹出子编辑窗。
+    h.get_by_label("<Ctrl+A>").click();
+    for _ in 0..4 {
+        h.step();
+    }
+    assert!(
+        h.query_by_label_contains("修改本行快捷键").is_some(),
+        "点击「修改后」应打开子编辑窗"
+    );
+    // 子窗内输入框：选中(Remove →) 替换为录制到的组合键。
+    let input = keys_input(&h);
+    input.focus();
+    h.step();
+    // 走录制路径验证与主窗口一致：点击「录制」后按键捕获。
+    h.get_by_label("录制").click();
+    h.step();
+    h.key_press_modifiers(egui::Modifiers::CTRL, egui::Key::J);
+    h.step();
+    // 确定 → 写回第一行草稿为 <Ctrl+J>
+    h.get_by_label("确定").click_accesskit();
+    h.step();
+    h.step();
+    // 子窗关闭后回到主 Emacs 弹窗，草稿应已被写回。
+    assert!(
+        h.query_by_label_contains("修改本行快捷键").is_none(),
+        "确定后子编辑窗应关闭"
+    );
+    let draft = h.state().emacs_draft.as_ref().expect("Emacs 弹窗应仍打开");
+    assert_eq!(
+        draft.new_keys[0], "<Ctrl+J>",
+        "录制后确定应写回第一行「修改后」为新键"
+    );
+    // 取消路径：改另一行后取消，不写回。
+    h.get_by_label("<Ctrl+E>").click();
+    for _ in 0..4 {
+        h.step();
+    }
+    h.get_by_label("取消").click_accesskit();
+    h.step();
+    h.step();
+    let draft = h.state().emacs_draft.as_ref().expect("取消后 Emacs 弹窗应仍打开");
+    assert_eq!(
+        draft.new_keys[1], "<Ctrl+E>",
+        "取消后该行「修改后」应保持原值，不回退也不改写"
     );
 }

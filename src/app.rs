@@ -12,9 +12,10 @@ use eframe::egui::{self, Color32, FontData, FontDefinitions, FontFamily, RichTex
 use crate::i18n::T;
 use crate::io::{
     create_history_backup, delete_backup, list_backups, parse_keymap_bytes, read_keymap,
-    read_keymap_bytes, restore_backup, set_entry_keys, write_keymap_raw, KeymapError,
+    read_keymap_bytes, restore_backup, set_entry_keys, set_entry_modes, write_keymap_raw,
+    KeymapError,
 };
-use crate::model::{action_description, KeymapEntry, KeymapFile};
+use crate::model::{action_description, modes_has, toggle_mode, KeymapEntry, KeymapFile, MODE_DESCRIPTIONS};
 
 type Msg = (MsgKind, String);
 
@@ -26,11 +27,13 @@ pub enum MsgKind {
     Error,
 }
 
-/// 待设置的快捷键草稿：仅修改一条绑定的 keys。
+/// 待设置的快捷键草稿：仅修改一条绑定的 keys 与 modes。
 #[derive(Debug, Clone)]
 pub struct KeysDraft {
     pub index: usize,
     pub keys: String,
+    /// 生效模式（逗号分隔串，如 `normal, local`；留空 = 全部模式）。
+    pub modes: String,
     /// 是否正处于「录制」态：开启后由本对话框扫描 egui 事件捕获组合键。
     pub recording: bool,
     /// 录制模式：替换当前值，或在当前值后追加。
@@ -130,6 +133,18 @@ impl EmacsDraft {
             }
         }
     }
+}
+
+/// 正在被「修改后」子编辑窗编辑的 Emacs 行草稿。
+///
+/// 复用主窗口快捷键设置的录制控件（`ui_shortcut_recorder`），保存时才写回
+/// `emacs_draft.new_keys[row]`；取消/点遮罩即丢弃。
+#[derive(Debug, Clone)]
+pub struct EmacsRowEdit {
+    pub row: usize,
+    pub keys: String,
+    pub recording: bool,
+    pub mode: RecordMode,
 }
 
 /// 为被挤出原键的占用者挑选一个不冲突的目标键：
@@ -289,7 +304,9 @@ pub struct EditorApp {
     /// 是否显示「一键 Emacs 风格」确认弹窗。
     emacs_modal: bool,
     /// 弹窗内可编辑的「修改后快捷键」；`None` 表示未打开，沿用预设默认值。
-    emacs_draft: Option<EmacsDraft>,
+    pub emacs_draft: Option<EmacsDraft>,
+    /// 正在被「修改后」子编辑窗编辑的 Emacs 行（含其录制态/模式），`None` 表示未打开。
+    emacs_row_edit: Option<EmacsRowEdit>,
 
     /// 是否显示「快捷键设置完整说明」帮助弹窗。
     show_help: bool,
@@ -314,6 +331,7 @@ impl EditorApp {
             backup_ui: None,
             emacs_modal: false,
             emacs_draft: None,
+            emacs_row_edit: None,
             show_help: false,
             msg: None,
         }
@@ -336,6 +354,7 @@ impl EditorApp {
                 self.backup_ui = None;
                 self.emacs_modal = false;
                 self.emacs_draft = None;
+                self.emacs_row_edit = None;
                 self.search.clear();
                 self.sort = None;
                 let name = path
@@ -443,33 +462,44 @@ impl EditorApp {
         self.keys_edit = Some(KeysDraft {
             index,
             keys: e.keys,
+            modes: e.modes,
             recording: false,
             mode: RecordMode::Replace,
         });
     }
 
-    /// 就地编辑某条 keys（集成测试通过此公开入口走真实保存链路）。
+    /// 就地编辑某条 keys/modes（集成测试通过此公开入口走真实保存链路）。
     pub fn apply_keys_edit(&mut self, d: &KeysDraft) {
         let Some(e) = self.file.entries.get(d.index) else {
             return;
         };
-        if e.keys == d.keys {
+        let keys_changed = e.keys != d.keys;
+        let modes_changed = e.modes != d.modes;
+        if !keys_changed && !modes_changed {
             return; // 无实质变化：不标记未保存
         }
-        let Some(raw) = self.raw.clone() else {
+        let Some(raw0) = self.raw.clone() else {
             return;
         };
-        // 就地字节替换：只改该条 keys 值那些字节，其余字节（其它字段、编码、换行、空白）不动。
-        match set_entry_keys(&raw, d.index, &d.keys) {
-            Ok(new_raw) => match parse_keymap_bytes(&new_raw) {
-                Ok(f) => {
-                    self.raw = Some(new_raw);
-                    self.file = f;
-                    self.dirty = true;
-                }
-                Err(_) => {} // 字节替换应产出合法 JSON；若异常解析失败，保持原状不写入。
-            },
-            Err(_) => {} // keys 字段定位失败时静默放弃，避免误写。
+        // 就地字节替换：只替换 keys / modes 值那些字节，其余字节（其它字段、编码、换行、
+        // 空白）不动。任一成员（如该条无 modes 字段）定位失败则整次放弃，避免误写。
+        let mut raw = raw0;
+        if keys_changed {
+            match set_entry_keys(&raw, d.index, &d.keys) {
+                Ok(nr) => raw = nr,
+                Err(_) => return,
+            }
+        }
+        if modes_changed {
+            match set_entry_modes(&raw, d.index, &d.modes) {
+                Ok(nr) => raw = nr,
+                Err(_) => return,
+            }
+        }
+        if let Ok(f) = parse_keymap_bytes(&raw) {
+            self.raw = Some(raw);
+            self.file = f;
+            self.dirty = true;
         }
     }
 
@@ -538,6 +568,7 @@ impl EditorApp {
             let d = KeysDraft {
                 index: *i,
                 keys: new_keys.clone(),
+                modes: snapshot[*i].modes.clone(), // 只挪键，模式保持不变
                 recording: false,
                 mode: RecordMode::Replace,
             };
@@ -661,15 +692,30 @@ impl eframe::App for EditorApp {
             }
         }
 
-        // 一键 Emacs 风格确认弹窗。
+        // 一键 Emacs 风格确认弹窗。子编辑窗打开时互斥渲染（只显示子窗，避免双层弹窗
+        // 出现重复的「确定/取消」按钮、也让遮罩点击只作用于顶层）；子窗关闭后父弹窗
+        // 以其保留的 emacs_draft 恢复。
         if self.emacs_modal {
-            let mut close = false;
-            let resp = egui::Modal::new(egui::Id::new("emacs_modal")).show(ctx, |ui| {
-                close = close || self.ui_emacs(ui);
-            });
-            if close || resp.should_close() {
-                self.emacs_modal = false;
-                self.emacs_draft = None;
+            if let Some(mut row_edit) = self.emacs_row_edit.take() {
+                // 「修改后」列的子编辑窗：复用主窗口快捷键录制控件。用 take 取出→渲染→
+                // 写回，保证子窗内 TextEdit/录制态跨帧保留。
+                let mut close = false;
+                let resp = egui::Modal::new(egui::Id::new("emacs_row_modal")).show(ctx, |ui| {
+                    self.ui_emacs_row_edit(ui, &mut row_edit, &mut close);
+                });
+                if !close && !resp.backdrop_response.clicked() {
+                    self.emacs_row_edit = Some(row_edit);
+                }
+            } else {
+                let mut close = false;
+                let resp = egui::Modal::new(egui::Id::new("emacs_modal")).show(ctx, |ui| {
+                    close = close || self.ui_emacs(ui);
+                });
+                if close || resp.should_close() {
+                    self.emacs_modal = false;
+                    self.emacs_draft = None;
+                    self.emacs_row_edit = None;
+                }
             }
         }
 
@@ -806,12 +852,18 @@ impl EditorApp {
         use egui_extras::{Column, TableBuilder};
         let col_action = Column::auto()
             .clip(true)
-            .at_least(150.0)
+            .at_least(140.0)
             .resizable(true);
+        // 描述列：非 resizable 的 remainder，每帧按窗口剩余宽重新填充（自适应）。
+        // 若标 resizable，egui_extras 会将其当固定宽存储，窗口变窄时不再收缩，
+        // 把最右侧“快捷键”列挤出视口。
         let col_desc = Column::remainder()
-            .resizable(true)
-            .at_least(120.0);
-        let col_keys = Column::auto().at_least(120.0).resizable(true);
+            .clip(true)
+            .at_least(60.0);
+        let col_keys = Column::auto()
+            .clip(true)
+            .at_least(100.0)
+            .resizable(true);
 
         TableBuilder::new(ui)
             .striped(true)
@@ -974,54 +1026,11 @@ impl EditorApp {
             });
         });
         ui.add_space(4.0);
-        // 标签 + 录制模式（替换 / 追加）
-        ui.horizontal(|ui| {
-            ui.label(RichText::new(T.ed_keys).strong());
-            ui.separator();
-            ui.selectable_value(&mut d.mode, RecordMode::Replace, T.rec_mode_replace)
-                .on_hover_text(T.rec_mode_tip);
-            ui.selectable_value(&mut d.mode, RecordMode::Append, T.rec_mode_append)
-                .on_hover_text(T.rec_mode_tip);
-        });
-        ui.separator();
-        // ① 自由文本编辑：兼容 <Ctrl+...>、vim 正则、裸字符。
-        // 不做全局按键嗅探，避免把输入框内正常打字误当作快捷键覆盖；组合键录入走下方「录制」器件。
-        ui.horizontal(|ui| {
-            // ② 录制按钮先放（宽度固定），输入框吃掉剩余宽度。
-            let rec_text = if d.recording {
-                RichText::new(T.ed_keys_recording).strong()
-            } else {
-                RichText::new(T.ed_keys_record).into()
-            };
-            let rec_tip = T.ed_keys_record_tip;
-            if ui.button(rec_text).on_hover_text(rec_tip).clicked() {
-                d.recording = !d.recording;
-            }
-            ui.add(
-                egui::TextEdit::singleline(&mut d.keys)
-                    .hint_text(T.ed_keys_placeholder)
-                    .desired_width(ui.available_width()),
-            );
-        });
-        // ②.⑤ 录制态：扫描 egui 事件捕获组合键。egui-winit 会把 Ctrl+C/X/V 翻译为
-        // Copy/Cut/Paste 事件（原 Key 事件被移除），故统一在此同时匹配 Key 与剪贴板事件。
-        if d.recording {
-            if let Some(ks) = capture_recorded_shortcut(ui) {
-                let combo = windterm_format(ks);
-                if d.mode == RecordMode::Append && !d.keys.is_empty() {
-                    d.keys.push_str(&combo);
-                } else {
-                    d.keys = combo;
-                }
-                d.recording = false;
-            }
-        }
-        // ③ 有效性警告
-        if let Some(w) = keys_warning(&d.keys) {
-            ui.add_space(4.0);
-            let warn = palette(ui.visuals().dark_mode).script;
-            ui.colored_label(warn, format!("⚠ {w}"));
-        }
+        // 录制控件被抽为 ui_shortcut_recorder，与「一键 Emacs」弹窗复用同一套
+        // 「录制/追加/校验」交互，保证体验一致。
+        self.ui_shortcut_recorder(ui, &mut d.keys, &mut d.recording, &mut d.mode);
+        // ②．5 生效模式：勾选已知模式 + 自由输入 + 模式说明。
+        self.ui_modes_editor(ui, &mut d.modes);
         // ③.1 当前条目对应的命令/脚本与描述（只读展示，始终显示）
         let cur = &self.file.entries[d.index];
         ui.add_space(4.0);
@@ -1075,6 +1084,102 @@ impl EditorApp {
             });
         });
         ui.add_space(6.0);
+    }
+
+    /// 可复用的快捷键录制控件：标签 + 录制模式（替换/追加）+ 录制按钮 + 自由文本输入 +
+    /// 录制事件捕获 + 有效性警告。
+    ///
+    /// 主窗口「设置快捷键」弹窗与「一键 Emacs」弹窗的「修改后」子编辑窗共用此控件，保证
+    /// 交互与校验一致：自由文本输入兼容 `<Ctrl+...>` / vim 正则 / 裸字符；「录制」态扫描
+    /// egui 事件捕获组合键（含被 egui-winit 翻译为 Copy/Cut/Paste 的 Ctrl+C/X/V）。
+    fn ui_shortcut_recorder(
+        &mut self,
+        ui: &mut egui::Ui,
+        keys: &mut String,
+        recording: &mut bool,
+        mode: &mut RecordMode,
+    ) {
+        // 标签 + 录制模式（替换 / 追加）
+        ui.horizontal(|ui| {
+            ui.label(RichText::new(T.ed_keys).strong());
+            ui.separator();
+            ui.selectable_value(mode, RecordMode::Replace, T.rec_mode_replace)
+                .on_hover_text(T.rec_mode_tip);
+            ui.selectable_value(mode, RecordMode::Append, T.rec_mode_append)
+                .on_hover_text(T.rec_mode_tip);
+        });
+        ui.separator();
+        // ① 自由文本编辑：兼容 <Ctrl+...>、vim 正则、裸字符。
+        // 不做全局按键嗅探，避免把输入框内正常打字误当作快捷键覆盖；组合键录入走下方「录制」器件。
+        ui.horizontal(|ui| {
+            // ② 录制按钮先放（宽度固定），输入框吃掉剩余宽度。
+            let rec_text = if *recording {
+                RichText::new(T.ed_keys_recording).strong()
+            } else {
+                RichText::new(T.ed_keys_record).into()
+            };
+            let rec_tip = T.ed_keys_record_tip;
+            if ui.button(rec_text).on_hover_text(rec_tip).clicked() {
+                *recording = !*recording;
+            }
+            ui.add(
+                egui::TextEdit::singleline(keys)
+                    .hint_text(T.ed_keys_placeholder)
+                    .desired_width(ui.available_width()),
+            );
+        });
+        // ②.⑤ 录制态：扫描 egui 事件捕获组合键。egui-winit 会把 Ctrl+C/X/V 翻译为
+        // Copy/Cut/Paste 事件（原 Key 事件被移除），故统一在此同时匹配 Key 与剪贴板事件。
+        if *recording {
+            if let Some(ks) = capture_recorded_shortcut(ui) {
+                let combo = windterm_format(ks);
+                if *mode == RecordMode::Append && !keys.is_empty() {
+                    keys.push_str(&combo);
+                } else {
+                    *keys = combo;
+                }
+                *recording = false;
+            }
+        }
+        // ③ 有效性警告
+        if let Some(w) = keys_warning(keys) {
+            ui.add_space(4.0);
+            let warn = palette(ui.visuals().dark_mode).script;
+            ui.colored_label(warn, format!("⚠ {w}"));
+        }
+    }
+
+    /// 「生效模式」编辑区：勾选已知模式 + 自由输入兜底（兼容未知/大小写变体写法）+ 模式说明。
+    ///
+    /// 勾选框以 `modes` 串为唯一事实来源：每帧用 `modes_has` 现算勾选态，点击经 `toggle_mode`
+    /// 就地改写串（移除大小写等价的其它写法且保留未知 token），与下方自由文本框天然一致、
+    /// 不会相互覆盖。
+    fn ui_modes_editor(&mut self, ui: &mut egui::Ui, modes: &mut String) {
+        ui.add_space(6.0);
+        ui.label(RichText::new(T.ed_modes).strong());
+        ui.horizontal_wrapped(|ui| {
+            for mi in MODE_DESCRIPTIONS {
+                let mut on = modes_has(modes, mi.mode);
+                if ui
+                    .checkbox(&mut on, mi.mode)
+                    .on_hover_text(mi.zh_desc)
+                    .clicked()
+                {
+                    toggle_mode(modes, mi.mode, on);
+                }
+            }
+        });
+        ui.add(
+            egui::TextEdit::singleline(modes)
+                .hint_text(T.ed_modes_placeholder)
+                .desired_width(ui.available_width()),
+        );
+        ui.add_space(4.0);
+        ui.label(RichText::new(T.ed_modes_desc_title).weak().small());
+        // 单行「name — 描述」合并渲染，避免与勾选框同名 label 冲突。
+        for mi in MODE_DESCRIPTIONS {
+            ui.label(RichText::new(format!("{} — {}", mi.mode, mi.zh_desc)).small());
+        }
     }
 
     /// 只读渲染一条快捷键条目的命令/脚本与中文描述。
@@ -1340,38 +1445,42 @@ impl EditorApp {
             ui.available_rect_before_wrap().min,
             egui::vec2(modal_w, 340.0),
         );
+        // 在 body 闭包内只写局部下标，闭包结束后统一应用，避免借用冲突。
+        let mut pending_row_edit: Option<usize> = None;
+        let mut pending_reset: Option<usize> = None;
         ui.scope_builder(egui::UiBuilder::new().max_rect(rect), |ui| {
             TableBuilder::new(ui)
                 .striped(true)
                 .cell_layout(egui::Layout::left_to_right(egui::Align::Center))
+                // 除描述列外，各列宽度区间都要「足够小」，保证即使窗口缩到最窄，所有固定最小
+                // 宽之和仍落在 modal_w 内——否则描述列被压到 at_least 后便无法再收缩，会把
+                // 靠右的“复位”列挤出视口。描述列保持非 resizable 的 remainder，每帧按
+                // 窗口剩余宽重新填充（自适应），兼作唯一吸收器。
                 .column(
-                    Column::initial(172.0)
+                    Column::initial(160.0)
                         .resizable(true)
-                        .range(120.0..=380.0)
+                        .range(110.0..=320.0)
                         .clip(true), // 操作名（超长截断+tooltip）
                 )
                 .column(
-                    Column::remainder()
-                        .resizable(true)
-                        .at_least(120.0)
-                        .clip(true), // 描述（吸收剩余宽，clip 防长文本膨胀）
+                    Column::remainder().clip(true).at_least(48.0), // 描述（吸收剩余宽）
                 )
                 .column(
-                    Column::initial(128.0)
+                    Column::initial(120.0)
                         .resizable(true)
-                        .range(90.0..=260.0)
+                        .range(96.0..=240.0)
                         .clip(true), // 修改前
                 )
                 .column(
-                    Column::initial(150.0)
+                    Column::initial(140.0)
                         .resizable(true)
-                        .range(140.0..=340.0)
-                        .clip(true), // 修改后（TextEdit 定宽，超长滚动）
+                        .range(128.0..=300.0)
+                        .clip(true), // 修改后
                 )
                 .column(
                     Column::initial(50.0)
                         .resizable(true)
-                        .range(48.0..=160.0)
+                        .range(42.0..=140.0)
                         .clip(true), // 复位
                 )
                 .max_scroll_height(320.0)
@@ -1445,20 +1554,46 @@ impl EditorApp {
                                     .on_hover_text(before.as_str());
                             });
                             row.col(|ui| {
-                                ui.add(
-                                    egui::TextEdit::singleline(&mut draft.new_keys[row_i])
-                                        .desired_width(140.0),
-                                );
+                                // 「修改后」列：点击打开子编辑窗，复用主窗口快捷键录制控件。
+                                let cur = draft.new_keys[row_i].as_str();
+                                let shown = if cur.is_empty() { T.emacs_unset } else { cur };
+                                if ui
+                                    .button(RichText::new(shown).monospace())
+                                    .on_hover_text(T.emacs_after_tip)
+                                    .clicked()
+                                {
+                                    pending_row_edit = Some(row_i);
+                                }
                             });
                             row.col(|ui| {
-                                ui.add_enabled_ui(!is_default, |ui| {
-                                    ui.button(T.emacs_reset).on_hover_text(T.emacs_reset_tip);
-                                });
+                                if ui
+                                    .add_enabled_ui(!is_default, |ui| {
+                                        ui.button(T.emacs_reset).on_hover_text(T.emacs_reset_tip)
+                                    })
+                                    .inner
+                                    .clicked()
+                                {
+                                    pending_reset = Some(row_i);
+                                }
                             });
                         });
                     }
                 });
         });
+
+        // 闭包结束后统一应用：复位直接改草稿；打开子编辑窗则初始化 EmacsRowEdit。
+        if let Some(r) = pending_reset {
+            draft.reset(r);
+        }
+        if let Some(r) = pending_row_edit {
+            let keys = draft.new_keys.get(r).cloned().unwrap_or_default();
+            self.emacs_row_edit = Some(EmacsRowEdit {
+                row: r,
+                keys,
+                recording: false,
+                mode: RecordMode::Replace,
+            });
+        }
 
         self.emacs_draft = Some(draft);
         ui.add_space(4.0);
@@ -1484,6 +1619,57 @@ impl EditorApp {
         });
         ui.add_space(6.0);
         close
+    }
+
+    /// 「一键 Emacs」弹窗中「修改后」列的子编辑窗。
+    ///
+    /// 复用主窗口快捷键设置的录制控件 `ui_shortcut_recorder`（同一套录制/追加/校验交互）。
+    /// 「确定」把编辑结果写回本行草稿；「取消」/× /点遮罩则丢弃。
+    fn ui_emacs_row_edit(&mut self, ui: &mut egui::Ui, d: &mut EmacsRowEdit, close: &mut bool) {
+        ui.set_min_width(460.0);
+        // 标题 + 右上角关闭按钮（与其它弹窗一致）。
+        ui.horizontal(|ui| {
+            ui.heading(T.emacs_after_edit_title);
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                if ui
+                    .add(egui::Button::new("✖").frame(false))
+                    .on_hover_text(T.btn_close)
+                    .clicked()
+                {
+                    *close = true;
+                }
+            });
+        });
+        ui.add_space(4.0);
+        // 录制控件（复用自「设置快捷键」弹窗）。
+        self.ui_shortcut_recorder(ui, &mut d.keys, &mut d.recording, &mut d.mode);
+        let dark = ui.visuals().dark_mode;
+        ui.add_space(8.0);
+        ui.label(if dark {
+            RichText::new(T.emacs_after_hint).weak().small()
+        } else {
+            RichText::new(T.emacs_after_hint)
+                .small()
+                .color(Color32::from_gray(70))
+        });
+        ui.add_space(8.0);
+        // 底部操作按钮：右对齐。
+        ui.horizontal(|ui| {
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                let ok = egui::Button::new(RichText::new(T.ok).strong());
+                if ui.add(ok).clicked() {
+                    // 写回本行草稿（行对齐由调用方保证，此处按需截断越界）。
+                    if let Some(keys) = self.emacs_draft.as_mut().and_then(|e| e.new_keys.get_mut(d.row)) {
+                        *keys = d.keys.clone();
+                    }
+                    *close = true;
+                }
+                if ui.add(egui::Button::new(T.cancel)).clicked() {
+                    *close = true;
+                }
+            });
+        });
+        ui.add_space(6.0);
     }
 
     /// 「备份恢复」弹窗：标题栏 + 备份列表（可刷新/删除）+ 选中后的恢复确认区。
@@ -2270,6 +2456,7 @@ mod tests {
         KeysDraft {
             index: 0,
             keys: keys.to_string(),
+            modes: "normal".into(),
             recording: false,
             mode: RecordMode::Replace,
         }
@@ -2282,6 +2469,18 @@ mod tests {
         a.apply_keys_edit(&draft("<Ctrl+C>"));
         assert!(!a.dirty, "无实质变化不应标记未保存");
         assert_eq!(a.file.entries[0].keys, "<Ctrl+C>");
+    }
+
+    #[test]
+    fn apply_keys_edit_changes_modes_in_place() {
+        // 仅改动 modes（keys 不变）也应就地写入并标记未保存。
+        let mut a = app_with(vec![ent("<Ctrl+C>", Some("Text.Copy"))]);
+        let mut d = draft("<Ctrl+C>");
+        d.modes = "normal, command".into();
+        a.apply_keys_edit(&d);
+        assert!(a.dirty, "改动 modes 应标记未保存");
+        assert_eq!(a.file.entries[0].modes, "normal, command");
+        assert_eq!(a.file.entries[0].keys, "<Ctrl+C>", "keys 不应被改动");
     }
 
     #[test]

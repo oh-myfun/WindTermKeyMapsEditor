@@ -1,4 +1,4 @@
-//! 文件 IO：读取/写出 `wind.keymaps`，写回前自动备份。
+﻿//! 文件 IO：读取/写出 `wind.keymaps`，写回前自动备份。
 //!
 //! 写回采用「先写临时文件，再改名覆盖」的方式，避免中途崩溃留下半个文件；
 //! 覆盖前把当前磁盘上的原文件复制为带本地时间戳的备份
@@ -237,6 +237,7 @@ fn scan_value_end(b: &[u8], p: usize) -> Result<usize> {
 fn find_member_span(b: &[u8], obj_start: usize, obj_end: usize, name: &str) -> Result<(usize, usize)> {
     let mut i = skip_ws(b, obj_start + 1);
     while i < obj_end {
+        i = skip_ws(b, i); // 跳过前一个成员后的空白（美化输出在逗号后换行缩进）
         if b.get(i) == Some(&b'}') {
             break;
         }
@@ -260,9 +261,9 @@ fn find_member_span(b: &[u8], obj_start: usize, obj_end: usize, name: &str) -> R
     Err(KeymapError::Validation(format!("未找到字段 “{name}”")))
 }
 
-/// 在原始字节流中定位第 `index` 条（顶层数组元素）的 `keys` 成员，返回其值（含引号）的
-/// 字节区间 `[start, end)`。
-fn locate_keys_span(raw: &[u8], index: usize) -> Result<(usize, usize)> {
+/// 在原始字节流中定位第 `index` 条（顶层数组元素）指定成员的值，返回其字节区间
+/// `[start, end)`（含两端双引号）。
+fn locate_member_span(raw: &[u8], index: usize, name: &str) -> Result<(usize, usize)> {
     // 从真实文件读到的原始字节可能带 UTF-8 BOM；与其解析一致，这里先跳过 BOM。
     let mut p = if raw.starts_with(&[0xEF, 0xBB, 0xBF]) {
         skip_ws(raw, 3)
@@ -285,7 +286,7 @@ fn locate_keys_span(raw: &[u8], index: usize) -> Result<(usize, usize)> {
                 let ostart = p;
                 let oend = scan_value_end(raw, p)?;
                 if elem == index {
-                    return find_member_span(raw, ostart, oend, "keys");
+                    return find_member_span(raw, ostart, oend, name);
                 }
                 p = oend;
                 elem += 1;
@@ -295,18 +296,34 @@ fn locate_keys_span(raw: &[u8], index: usize) -> Result<(usize, usize)> {
     }
 }
 
-/// 就地修改第 `index` 条的 `keys` 值，返回新字节内容。除该值外，其余字节逐字节不变，
-/// 因此编码 / BOM / 换行符 / 空白 / 字段顺序 / 快捷键以外的字段值均原样保留。
-///
-/// `new_keys` 会被转义为合法 JSON 字符串（非 ASCII 原样保留）。
-pub fn set_entry_keys(raw: &[u8], index: usize, new_keys: &str) -> Result<Vec<u8>> {
-    let (start, end) = locate_keys_span(raw, index)?;
-    let enc = serde_json::to_string(new_keys).map_err(KeymapError::Json)?;
+/// 就地替换第 `index` 条对象的指定字符串成员值，返回新字节内容。除该值外，其余字节
+/// 逐字节不变，因此编码 / BOM / 换行符 / 空白 / 字段顺序 / 其它字段值均原样保留。
+/// `new_val` 会被转义为合法 JSON 字符串（非 ASCII 原样保留）。
+fn set_entry_member(raw: &[u8], index: usize, name: &str, new_val: &str) -> Result<Vec<u8>> {
+    let (start, end) = locate_member_span(raw, index, name)?;
+    let enc = serde_json::to_string(new_val).map_err(KeymapError::Json)?;
     let mut out = Vec::with_capacity(raw.len() + enc.len() + 1 - (end - start));
     out.extend_from_slice(&raw[..start]);
     out.extend_from_slice(enc.as_bytes());
     out.extend_from_slice(&raw[end..]);
     Ok(out)
+}
+
+/// 就地修改第 `index` 条的 `keys` 值，返回新字节内容。除该值外，其余字节逐字节不变，
+/// 因此编码 / BOM / 换行符 / 空白 / 字段顺序 / 快捷键以外的字段值均原样保留。
+///
+/// `new_keys` 会被转义为合法 JSON 字符串（非 ASCII 原样保留）。
+pub fn set_entry_keys(raw: &[u8], index: usize, new_keys: &str) -> Result<Vec<u8>> {
+    set_entry_member(raw, index, "keys", new_keys)
+}
+
+/// 就地修改第 `index` 条的 `modes` 值（与 `set_entry_keys` 同一套字节级就地替换），
+/// 保证其它字段 / 编码 / BOM / 换行符逐字节不变。
+///
+/// 若该条原始字节里没有 `modes` 字段（WindTerm 允许省略，省略即全部模式生效），返回
+/// 错误由调用方静默放弃，绝不把缺失字段强插进来导致字节结构被改写。
+pub fn set_entry_modes(raw: &[u8], index: usize, new_modes: &str) -> Result<Vec<u8>> {
+    set_entry_member(raw, index, "modes", new_modes)
 }
 
 /// 生成带时间戳的历史备份名：`<原名>.<YYYYMMDD-HHMMSS>.bak`。
@@ -642,7 +659,7 @@ mod tests {
             "\r\n]"
         )
         .to_string();
-        let (s, e) = locate_keys_span(raw.as_bytes(), 1).unwrap();
+        let (s, e) = locate_member_span(raw.as_bytes(), 1, "keys").unwrap();
         assert_eq!(&raw.as_bytes()[s + 1..e - 1], b"<Ctrl+C>", "定位到第 2 条 keys 值");
 
         let out = set_entry_keys(raw.as_bytes(), 1, "<Ctrl+M>").unwrap();
@@ -688,7 +705,7 @@ mod tests {
             "]"
         )
         .to_string();
-        let (s, e) = locate_keys_span(raw.as_bytes(), 1).unwrap();
+        let (s, e) = locate_member_span(raw.as_bytes(), 1, "keys").unwrap();
         let trailing = raw.as_bytes()[e..].to_vec();
 
         // 新值含引号 / 反斜杠 / 非 ASCII，需正确 JSON 转义且其余字节不动
@@ -728,5 +745,70 @@ mod tests {
             let out = set_entry_keys(&raw, i, &e.keys).unwrap();
             assert_eq!(out, raw, "第 {i} 条替换为同值应保持字节不变");
         }
+    }
+
+    #[test]
+    fn set_entry_modes_only_changes_target_modes_value() {
+        let raw = concat!(
+            "\u{FEFF}[",
+            "\r\n  {\"keys\":\"<Ctrl+O>\",\"modes\":\"normal\",\"action\":\"File.Open\"},",
+            "\r\n  {\"keys\":\"<Ctrl+C>\",\"modes\":\"normal, local\",\"action\":\"Text.Copy\",\"when\":{\"run\":1}},",
+            "\r\n  {\"keys\":\"i\",\"modes\":\"command\"}",
+            "\r\n]"
+        )
+        .to_string();
+        let (s, e) = locate_member_span(raw.as_bytes(), 1, "modes").unwrap();
+        assert_eq!(&raw.as_bytes()[s + 1..e - 1], b"normal, local", "定位到第 2 条 modes 值");
+
+        let out = set_entry_modes(raw.as_bytes(), 1, "command, widget").unwrap();
+        let new_val = serde_json::to_string("command, widget").unwrap();
+
+        assert!(out.starts_with(&[0xEF, 0xBB, 0xBF]), "BOM 应保留");
+        assert_eq!(&out[..s], &raw.as_bytes()[..s], "替换点之前逐字节不变");
+        assert_eq!(&out[s + new_val.len()..], &raw.as_bytes()[e..], "替换点之后逐字节不变");
+        assert_eq!(&out[s..s + new_val.len()], new_val.as_bytes());
+        assert_eq!(
+            out.iter().filter(|&&b| b == b'\r').count(),
+            raw.as_bytes().iter().filter(|&&b| b == b'\r').count(),
+            "CRLF 数量不变"
+        );
+
+        let body = String::from_utf8(out).unwrap().strip_prefix('\u{FEFF}').unwrap_or("").to_string();
+        let parsed = KeymapFile::parse_json(&body).unwrap();
+        assert_eq!(parsed.entries[1].modes, "command, widget");
+        assert_eq!(parsed.entries[0].modes, "normal");
+        assert_eq!(parsed.entries[2].modes, "command");
+        assert_eq!(
+            parsed.entries[1].extra.get("when").and_then(|v| v.get("run")),
+            Some(&serde_json::Value::from(1)),
+            "extra 字段 when 应原样保留"
+        );
+    }
+
+    #[test]
+    fn set_entry_modes_is_noop_when_value_unchanged_on_real_sample() {
+        // 真实样本是带换行缩进的美化 JSON；对每条「含 modes 字段」的条目做同值替换，
+        // 结果必须逐字节等于原文件（证明在美化格式下能正确定位 modes 且不引入多余变化）。
+        let p = Path::new(env!("CARGO_MANIFEST_DIR")).join("samples/global/wind.keymaps");
+        let raw = fs::read(&p).unwrap();
+        let f = KeymapFile::parse_json(&String::from_utf8(raw.clone()).unwrap()).unwrap();
+        let mut checked = 0usize;
+        for (i, e) in f.entries.iter().enumerate() {
+            if e.modes.is_empty() {
+                continue; // 该条省略 modes 字段，不在此验证
+            }
+            let out = set_entry_modes(&raw, i, &e.modes).unwrap();
+            assert_eq!(out, raw, "第 {i} 条 modes 替换为同值应保持字节不变");
+            checked += 1;
+        }
+        assert!(checked > 0, "样本中应至少有一条带 modes 字段可验证");
+    }
+
+    #[test]
+    fn set_entry_modes_missing_field_errors() {
+        // 条目省略 modes 字段时不应强插，直接报错由调用方放弃。
+        let raw = b"[{\"keys\":\"<Ctrl+N>\",\"action\":\"A\"}]".to_vec();
+        assert!(set_entry_modes(&raw, 0, "normal").is_err(), "缺 modes 字段应报错");
+        assert!(set_entry_modes(&raw, 5, "normal").is_err(), "越界下标应报错");
     }
 }

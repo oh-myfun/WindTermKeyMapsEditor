@@ -113,6 +113,45 @@ pub const MODE_DESCRIPTIONS: &[ModeInfo] = &[
     },
 ];
 
+/// 判断 `modes`（逗号分隔串）是否包含指定模式；大小写不敏感（WindTerm 对大小写敏感，
+/// 但此处只做 UI 勾选判定，不用于写回改写）。
+pub fn modes_has(modes: &str, mode: &str) -> bool {
+    modes
+        .split(',')
+        .map(str::trim)
+        .any(|m| !m.is_empty() && m.eq_ignore_ascii_case(mode))
+}
+
+/// 开关某个模式：
+/// - `on = true`：若已有大小写等价的 token（如 `Remote` 之于 `remote`）则保持原写法不动，
+///   否则在末尾追加该模式；
+/// - `on = false`：移除所有与它大小写等价的 token。
+/// 其它未知/自定义 token 一律保留，以免破坏用户手写的特殊写法。
+pub fn toggle_mode(modes: &mut String, mode: &str, on: bool) {
+    let has = modes
+        .split(',')
+        .map(str::trim)
+        .any(|t| !t.is_empty() && t.eq_ignore_ascii_case(mode));
+    if on == has {
+        return; // 已处于目标状态，无需改动（开时保留已有写法）
+    }
+    if !on {
+        let kept: Vec<&str> = modes
+            .split(',')
+            .map(str::trim)
+            .filter(|t| !t.is_empty() && !t.eq_ignore_ascii_case(mode))
+            .collect();
+        *modes = kept.join(", ");
+    } else {
+        let trimmed = modes.trim();
+        *modes = if trimmed.is_empty() {
+            mode.to_string()
+        } else {
+            format!("{trimmed}, {mode}")
+        };
+    }
+}
+
 /// 整个 `wind.keymaps` 文件（顶层 JSON 数组的封装）。
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct KeymapFile {
@@ -545,5 +584,43 @@ mod tests {
         let json = f.to_json_string().unwrap();
         assert!(json.contains("normal, Remote, Widget"));
         assert_eq!(KeymapFile::parse_json(&json).unwrap(), f);
+    }
+
+    #[test]
+    fn modes_has_matches_case_insensitively() {
+        assert!(modes_has("normal, local", "normal"));
+        assert!(modes_has("normal, Remote", "remote"), "Remote 应视为 remote");
+        assert!(!modes_has("normal, local", "widget"));
+        assert!(!modes_has("", "normal"), "空串不含任何模式");
+        assert!(!modes_has("," , "normal"), "逗号空 token 不匹配");
+    }
+
+    #[test]
+    fn toggle_mode_appends_and_removes_async() {
+        // 开：已含大小写等价写法则保持原样；未含则追加到末尾并保留已有 token
+        let mut m = "normal, Remote".to_string();
+        toggle_mode(&mut m, "remote", true);
+        assert_eq!(m, "normal, Remote", "已有 Remote 时开启应保持原写法（幂等）");
+        let mut m5 = "normal".to_string();
+        toggle_mode(&mut m5, "widget", true);
+        assert_eq!(m5, "normal, widget");
+
+        // 关：移除大小写等价的所有写法，保留其它未知 token
+        let mut m2 = "normal, Remote, remote, widget".to_string();
+        toggle_mode(&mut m2, "remote", false);
+        assert_eq!(m2, "normal, widget", "移除大小写等价的 Remote/remote");
+
+        // 未知/自定义 token 保留
+        let mut m3 = "normal, customX".to_string();
+        toggle_mode(&mut m3, "widget", true);
+        assert_eq!(m3, "normal, customX, widget");
+        // 空串追加
+        let mut m4 = String::new();
+        toggle_mode(&mut m4, "normal", true);
+        assert_eq!(m4, "normal");
+        // 移除不存在的模式：无变化
+        let mut m6 = "normal".to_string();
+        toggle_mode(&mut m6, "widget", false);
+        assert_eq!(m6, "normal");
     }
 }
