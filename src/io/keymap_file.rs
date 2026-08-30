@@ -261,9 +261,9 @@ fn find_member_span(b: &[u8], obj_start: usize, obj_end: usize, name: &str) -> R
     Err(KeymapError::Validation(format!("未找到字段 “{name}”")))
 }
 
-/// 在原始字节流中定位第 `index` 条（顶层数组元素）指定成员的值，返回其字节区间
-/// `[start, end)`（含两端双引号）。
-fn locate_member_span(raw: &[u8], index: usize, name: &str) -> Result<(usize, usize)> {
+/// 在原始字节流中定位第 `index` 条（顶层数组元素）对象的字节区间 `[start, end)`，
+/// `start` 指向 `{`。会跳过文件开头的 UTF-8 BOM。
+fn locate_entry_object(raw: &[u8], index: usize) -> Result<(usize, usize)> {
     // 从真实文件读到的原始字节可能带 UTF-8 BOM；与其解析一致，这里先跳过 BOM。
     let mut p = if raw.starts_with(&[0xEF, 0xBB, 0xBF]) {
         skip_ws(raw, 3)
@@ -286,7 +286,7 @@ fn locate_member_span(raw: &[u8], index: usize, name: &str) -> Result<(usize, us
                 let ostart = p;
                 let oend = scan_value_end(raw, p)?;
                 if elem == index {
-                    return find_member_span(raw, ostart, oend, name);
+                    return Ok((ostart, oend));
                 }
                 p = oend;
                 elem += 1;
@@ -294,6 +294,13 @@ fn locate_member_span(raw: &[u8], index: usize, name: &str) -> Result<(usize, us
             _ => return Err(KeymapError::Validation("顶层数组元素不是对象".into())),
         }
     }
+}
+
+/// 在原始字节流中定位第 `index` 条（顶层数组元素）指定成员的值，返回其字节区间
+/// `[start, end)`（含两端双引号）。
+fn locate_member_span(raw: &[u8], index: usize, name: &str) -> Result<(usize, usize)> {
+    let (obj_start, obj_end) = locate_entry_object(raw, index)?;
+    find_member_span(raw, obj_start, obj_end, name)
 }
 
 /// 就地替换第 `index` 条对象的指定字符串成员值，返回新字节内容。除该值外，其余字节
@@ -309,21 +316,54 @@ fn set_entry_member(raw: &[u8], index: usize, name: &str, new_val: &str) -> Resu
     Ok(out)
 }
 
+/// 就地替换或插入第 `index` 条的 `modes` 值。
+///
+/// - 若该条原始字节里已有 `modes` 字段：仅替换该值，其余字节逐字节不变；
+/// - 若缺失（WindTerm 省略该字段 = 全部模式生效）：在对象内新增该成员为第一个字段，
+///   以便用户显式指定生效模式；
+/// - 返回新字节内容；只这对 `modes` 开放插入能力，`keys` 用 `set_entry_keys` 保持
+///   「必须存在」的严格语义。
+pub fn set_entry_modes(raw: &[u8], index: usize, new_modes: &str) -> Result<Vec<u8>> {
+    let (obj_start, obj_end) = locate_entry_object(raw, index)?;
+    set_member_replace_or_insert(raw, obj_start, obj_end, "modes", new_modes)
+}
+
+/// 在对象区间内「替换或插入」成员；缺失时插入为第一个成员（空对象不加逗号，非空对象
+/// 加尾逗号以衔接到既有成员）。
+fn set_member_replace_or_insert(
+    raw: &[u8],
+    obj_start: usize,
+    obj_end: usize,
+    name: &str,
+    new_val: &str,
+) -> Result<Vec<u8>> {
+    let enc = serde_json::to_string(new_val).map_err(KeymapError::Json)?;
+    // 已存在 → 只替换值。
+    if let Ok((start, end)) = find_member_span(raw, obj_start, obj_end, name) {
+        let mut out = Vec::with_capacity(raw.len() + enc.len() + 1 - (end - start));
+        out.extend_from_slice(&raw[..start]);
+        out.extend_from_slice(enc.as_bytes());
+        out.extend_from_slice(&raw[end..]);
+        return Ok(out);
+    }
+    // 缺失 → 插入为对象第一个成员（紧接 `{` 之后；非空对象补逗号衔接到原有成员）。
+    let insert_at = obj_start + 1; // 指向 `{` 之后
+    let after_brace = skip_ws(raw, insert_at);
+    let empty = raw.get(after_brace) == Some(&b'}');
+    let piece = format!("\"{name}\":{enc}{}", if empty { "" } else { "," });
+    let mut out = Vec::with_capacity(raw.len() + piece.len());
+    out.extend_from_slice(&raw[..insert_at]);
+    out.extend_from_slice(piece.as_bytes());
+    out.extend_from_slice(&raw[insert_at..]);
+    Ok(out)
+}
+
 /// 就地修改第 `index` 条的 `keys` 值，返回新字节内容。除该值外，其余字节逐字节不变，
 /// 因此编码 / BOM / 换行符 / 空白 / 字段顺序 / 快捷键以外的字段值均原样保留。
 ///
 /// `new_keys` 会被转义为合法 JSON 字符串（非 ASCII 原样保留）。
 pub fn set_entry_keys(raw: &[u8], index: usize, new_keys: &str) -> Result<Vec<u8>> {
     set_entry_member(raw, index, "keys", new_keys)
-}
-
-/// 就地修改第 `index` 条的 `modes` 值（与 `set_entry_keys` 同一套字节级就地替换），
-/// 保证其它字段 / 编码 / BOM / 换行符逐字节不变。
-///
-/// 若该条原始字节里没有 `modes` 字段（WindTerm 允许省略，省略即全部模式生效），返回
-/// 错误由调用方静默放弃，绝不把缺失字段强插进来导致字节结构被改写。
-pub fn set_entry_modes(raw: &[u8], index: usize, new_modes: &str) -> Result<Vec<u8>> {
-    set_entry_member(raw, index, "modes", new_modes)
 }
 
 /// 生成带时间戳的历史备份名：`<原名>.<YYYYMMDD-HHMMSS>.bak`。
@@ -805,10 +845,54 @@ mod tests {
     }
 
     #[test]
-    fn set_entry_modes_missing_field_errors() {
-        // 条目省略 modes 字段时不应强插，直接报错由调用方放弃。
-        let raw = b"[{\"keys\":\"<Ctrl+N>\",\"action\":\"A\"}]".to_vec();
-        assert!(set_entry_modes(&raw, 0, "normal").is_err(), "缺 modes 字段应报错");
+    fn set_entry_modes_on_missing_field_of_real_sample_lands() {
+        // 复现用户问题：样本中省略 modes 字段（视为全部模式生效）的条目此前编辑生效模式是
+        // 静默无效的。现在应能插入字段、解析成功且值落地，其它字段保真。
+        let p = Path::new(env!("CARGO_MANIFEST_DIR")).join("samples/global/wind.keymaps");
+        let raw = fs::read(&p).unwrap();
+        let f = KeymapFile::parse_json(&String::from_utf8(raw.clone()).unwrap()).unwrap();
+        let mut touched = 0usize;
+        for (i, e) in f.entries.iter().enumerate() {
+            if !e.modes.is_empty() {
+                continue; // 只处理缺失/空 modes 的条目
+            }
+            let out = set_entry_modes(&raw, i, "normal").unwrap();
+            let parsed = KeymapFile::parse_json(&String::from_utf8(out).unwrap()).unwrap();
+            assert_eq!(parsed.entries[i].modes, "normal", "第 {i} 条 modes 应落地");
+            assert_eq!(parsed.entries[i].keys, e.keys, "第 {i} 条 keys 应保真");
+            assert_eq!(parsed.entries[i].action, e.action, "第 {i} 条 action 应保真");
+            assert_eq!(
+                parsed.entries[i].extra.get("when"),
+                e.extra.get("when"),
+                "第 {i} 条 extra.when 应保真"
+            );
+            touched += 1;
+        }
+        assert!(touched > 0, "样本中应存在缺失 modes 的条目可验证");
+    }
+
+    #[test]
+    fn set_entry_modes_inserts_field_when_missing() {
+        // 条目省略 modes 字段（WindTerm 视为全部模式生效）时，编辑生效模式应「新增」字段
+        // 而非静默放弃；其它字段/嵌套结构/键值须保持可解析且保真。
+        let raw = b"[{\"keys\":\"<Ctrl+N>\",\"when\":{\"run\":1},\"action\":\"A\"}]".to_vec();
+        let out = set_entry_modes(&raw, 0, "normal").unwrap();
+        let parsed =
+            KeymapFile::parse_json(&String::from_utf8(out.clone()).unwrap()).unwrap();
+        assert_eq!(parsed.entries[0].modes, "normal", "缺失时应新增 modes 字段");
+        assert_eq!(parsed.entries[0].keys, "<Ctrl+N>");
+        assert_eq!(parsed.entries[0].action.as_deref(), Some("A"));
+        assert_eq!(
+            parsed.entries[0].extra.get("when").and_then(|v| v.get("run")),
+            Some(&serde_json::Value::from(1)),
+            "新增字段不应破坏嵌套 extra"
+        );
+        // 空对象也能安全插入。
+        let raw_empty = b"[{}]".to_vec();
+        let out2 = set_entry_modes(&raw_empty, 0, "normal").unwrap();
+        let parsed2 = KeymapFile::parse_json(&String::from_utf8(out2).unwrap()).unwrap();
+        assert_eq!(parsed2.entries[0].modes, "normal");
+        // 越界下标仍应报错。
         assert!(set_entry_modes(&raw, 5, "normal").is_err(), "越界下标应报错");
     }
 }
