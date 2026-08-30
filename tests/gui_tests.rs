@@ -71,6 +71,19 @@ fn click_sort_header(h: &mut Harness<'_, EditorApp>, base: &str) {
     h.step();
 }
 
+/// 点击编辑弹窗里名为 `label` 的模式勾选框。
+/// 主表新增「生效模式」列后，行内容里会出现同名文本节点（如 "normal"），
+/// 与弹窗勾选框的 accesskit 标签冲突；用 `Role::CheckBox` 精确锁定勾选框。
+fn click_modes_checkbox(h: &mut Harness<'_, EditorApp>, label: &str) {
+    let node = h
+        .query_all_by(|n| {
+            n.role() == egui::accesskit::Role::CheckBox && n.label().as_deref() == Some(label)
+        })
+        .next()
+        .expect("应能找到对应的模式勾选框");
+    node.click();
+}
+
 // ---------- 渲染与状态 ----------
 
 #[test]
@@ -387,7 +400,7 @@ fn keys_dialog_modes_checkbox_toggle_writes_back_and_unchecks() {
     let mut h = harness_for(vec![ent("<Ctrl+C>", "Text.Copy")]);
     open_keys_dialog(&mut h, "<Ctrl+C>");
     // 关闭 normal（初始即勾选）：normal 被移除 → modes 为空（表示全部模式）
-    h.get_by_label("normal").click();
+    click_modes_checkbox(&mut h, "normal");
     h.step();
     assert_eq!(
         h.state().keys_edit.as_ref().map(|d| d.modes.as_str()),
@@ -395,7 +408,7 @@ fn keys_dialog_modes_checkbox_toggle_writes_back_and_unchecks() {
         "取消勾选 normal 后 modes 应为空"
     );
     // 再打开 normal → 恢复
-    h.get_by_label("normal").click();
+    click_modes_checkbox(&mut h, "normal");
     h.step();
     assert_eq!(
         h.state().keys_edit.as_ref().map(|d| d.modes.as_str()),
@@ -914,7 +927,7 @@ fn emacs_modal_renders_full_editable_list_and_applies() {
     assert!(h.state().dirty, "一键应用后应标记未保存");
 }
 
-/// 回归断言：一键 Emacs 弹窗的 5 列表格必须完整落在视口内（最右侧「复位」列不溢出）。
+/// 回归断言：一键 Emacs 弹窗的 6 列表格必须完整落在视口内（最右侧「复位」列不溢出）。
 /// 此前 Grid 的 add_sized 与 Table 的 exact 都曾被 Modal 的超大 available 撑宽，把
 /// 「修改后/复位」列挤出窗口右缘；本用例在应用自身坐标系断言复位按钮右缘 < 视口宽，
 /// 防止列布局回归。
@@ -1007,4 +1020,108 @@ fn emacs_after_col_reuses_shortcut_recorder() {
         draft.new_keys[1], "<Ctrl+E>",
         "取消后该行「修改后」应保持原值，不回退也不改写"
     );
+}
+
+/// 主表「生效模式」列：点击单元格弹独立编辑窗，改 modes 后确定写回并标记未保存。
+#[test]
+fn main_table_modes_cell_opens_editor_and_writes_back() {
+    let mut h = harness_for(vec![ent("<Ctrl+C>", "Text.Copy")]);
+    h.step();
+    // 主表「生效模式」列显示条目 modes = "normal"。
+    assert!(h.query_by_label("normal").is_some(), "主表应有「生效模式」列");
+    // 点击 modes 单元格（此时无弹窗，「normal」唯一）→ 弹出生效模式编辑窗。
+    h.get_by_label("normal").click();
+    h.step();
+    h.step();
+    assert!(
+        h.query_by_label_contains("编辑生效模式").is_some(),
+        "点击「生效模式」列应弹出编辑窗"
+    );
+    // 勾选 command → 追加为 normal, command。
+    click_modes_checkbox(&mut h, "command");
+    h.step();
+    h.get_by_label("确定").click_accesskit();
+    h.step();
+    h.step();
+    assert_eq!(h.state().file.entries[0].modes, "normal, command");
+    assert!(h.state().dirty, "修改生效模式后应标记未保存");
+}
+
+/// Emacs 弹窗「生效模式」列：释放行固定显示禁用的「不修改」；语义行单元格可点出子编辑窗，
+/// 编辑结果写回草稿，应用时改到目标条目；其它字段/键不受影响。
+#[test]
+fn emacs_modes_col_edit_semantic_row_and_release_disabled() {
+    // 语义行目标条目用唯一 modes，便于在 Emacs 弹窗内定位其「生效模式」单元格。
+    let target = KeymapEntry {
+        keys: "<Ctrl+Left>".into(),
+        modes: "normal, command".into(),
+        action: Some("Text.MoveToPreviousWordStart".into()), // Alt+B 行（预设 index 4）
+        script: None,
+        extra: Default::default(),
+    };
+    let mut h = harness_for(vec![
+        ent("<Ctrl+W>", "Window.CloseActiveView"),          // 释放行占用者
+        ent("<Alt+B>", "Window.ShowPaletteMultiplexer"),    // 语义键占用者
+        target,
+    ]);
+    h.step();
+    h.get_by_label("Emacs风格").click();
+    for _ in 0..8 {
+        h.step();
+    }
+    // 释放行固定显示「不修改」按钮，数量 = 预设中 bind=None 的行数。
+    let unset_count = h
+        .query_all_by(|n| {
+            n.role() == egui::accesskit::Role::Button && n.label().is_some_and(|l| l == "不修改")
+        })
+        .count();
+    assert_eq!(
+        unset_count,
+        windterm_keymaps_editor::app::EMACS_PRESET
+            .iter()
+            .filter(|it| it.bind.is_none())
+            .count(),
+        "每个释放行应显示「不修改」，实际 {unset_count}"
+    );
+    // 语义行（Alt+B）的「生效模式」单元格显示目标条目 modes。该字符串在树中先出现于主表
+    // 后出现于 Emacs 弹窗（弹窗 layer 更后），取最后一个即弹窗内的单元格。
+    let mut cells: Vec<_> = h
+        .query_all_by(|n| {
+            n.role() == egui::accesskit::Role::Button && n.label().as_deref() == Some("normal, command")
+        })
+        .collect();
+    let cell = cells.pop().expect("应有语义行「生效模式」单元格");
+    cell.click();
+    for _ in 0..4 {
+        h.step();
+    }
+    assert!(
+        h.query_by_label_contains("编辑本行目标的生效模式").is_some(),
+        "点击语义行「生效模式」应打开子编辑窗"
+    );
+    // 取消勾选 command → modes 变为 normal。
+    click_modes_checkbox(&mut h, "command");
+    h.step();
+    h.get_by_label("确定").click_accesskit();
+    h.step();
+    h.step();
+    let draft = h.state().emacs_draft.as_ref().expect("Emacs 弹窗应仍打开");
+    assert_eq!(
+        draft.new_modes[4].as_deref(),
+        Some("normal"),
+        "语义行模式编辑结果应写回草稿（Alt+B = index 4）"
+    );
+    // 一键应用：目标条目 modes 一并更新，键绑定到 Alt+B。
+    h.get_by_label("一键应用").click_accesskit();
+    h.step();
+    h.step();
+    let target = h
+        .state()
+        .file
+        .entries
+        .iter()
+        .find(|e| e.action.as_deref() == Some("Text.MoveToPreviousWordStart"))
+        .expect("应有该语义条目");
+    assert_eq!(target.modes, "normal", "应用后语义条目 modes 应更新");
+    assert_eq!(target.keys, "<Alt+B>", "应用后语义条目标键应为 Alt+B");
 }

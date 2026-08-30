@@ -54,6 +54,7 @@ pub enum RecordMode {
 enum SortCol {
     Action,
     Desc,
+    Modes,
     Keys,
 }
 
@@ -117,12 +118,16 @@ fn item_default_after(it: &EmacsItem) -> String {
 #[derive(Debug, Clone)]
 pub struct EmacsDraft {
     pub new_keys: Vec<String>,
+    /// 逐行的生效模式编辑结果：`Some(m)` 表示应用时把该行目标条目 modes 改为 `m`；
+    /// `None` 表示不变（释放给 shell 的行恒为 `None`）。
+    pub new_modes: Vec<Option<String>>,
 }
 
 impl EmacsDraft {
     pub fn defaults() -> Self {
         Self {
             new_keys: EMACS_PRESET.iter().map(item_default_after).collect(),
+            new_modes: EMACS_PRESET.iter().map(|_| None).collect(),
         }
     }
 
@@ -131,6 +136,9 @@ impl EmacsDraft {
             if let Some(slot) = self.new_keys.get_mut(row) {
                 *slot = item_default_after(it);
             }
+        }
+        if let Some(slot) = self.new_modes.get_mut(row) {
+            *slot = None; // 复位同时清除该行的模式自定义设置
         }
     }
 }
@@ -145,6 +153,20 @@ pub struct EmacsRowEdit {
     pub keys: String,
     pub recording: bool,
     pub mode: RecordMode,
+}
+
+/// 主窗口「生效模式」独立编辑弹窗草稿：仅修改一条绑定的 modes。
+#[derive(Debug, Clone)]
+pub struct ModesDraft {
+    pub index: usize,
+    pub modes: String,
+}
+
+/// 正被「一键 Emacs」弹窗「生效模式」列子编辑窗编辑的行草稿。
+#[derive(Debug, Clone)]
+pub struct EmacsModesEdit {
+    pub row: usize,
+    pub modes: String,
 }
 
 /// 为被挤出原键的占用者挑选一个不冲突的目标键：
@@ -170,20 +192,24 @@ fn free_reloc_target(base: &str, occupied: &HashSet<String>) -> String {
 
 /// 把 `snapshot[i]` 的键改为 `new_keys` 的计划项：仅当该项此前未安排过才加入，
 /// 并同步维护 `occupied`（移出旧键、占用新键），保证后续挑选空闲目标键时不冲突。
+///
+/// `modes` 为可选的追加设置：`Some(m)` 表示应用时把该条目 modes 一并改为 `m`（Emacs
+/// 模式列编辑的结果，只作用于语义行的目标条目）；`None` 表示模式的保持原样。
 fn plan_move(
-    plan: &mut Vec<(usize, String)>,
+    plan: &mut Vec<(usize, String, Option<String>)>,
     planned: &mut HashSet<usize>,
     occupied: &mut HashSet<String>,
     snapshot: &[KeymapEntry],
     i: usize,
     new_keys: String,
+    modes: Option<String>,
 ) {
     if planned.insert(i) {
         if let Some(old) = snapshot.get(i) {
             occupied.remove(old.keys.as_str());
         }
         occupied.insert(new_keys.clone());
-        plan.push((i, new_keys));
+        plan.push((i, new_keys, modes));
     }
 }
 
@@ -232,13 +258,14 @@ struct SortState {
 /// 否则亮色在浅背景上会显得偏浅、难以辨认。
 #[derive(Clone, Copy)]
 struct Palette {
-    action: Color32,   // 操作名
-    keys: Color32,     // 快捷键
-    empty: Color32,    // 空快捷键（异常，红）
-    script: Color32,   // 脚本/警告/冲突提示（橙）
-    ok: Color32,       // 弹窗「确定」强调（绿）
+    action: Color32,     // 操作名
+    keys: Color32,       // 快捷键
+    modes: Color32,      // 生效模式
+    empty: Color32,      // 空快捷键（异常，红）
+    script: Color32,     // 脚本/警告/冲突提示（橙）
+    ok: Color32,         // 弹窗「确定」强调（绿）
     entry_keys: Color32, // 冲突列表条目 keys（红）
-    error: Color32,    // 状态栏错误消息（红）
+    error: Color32,      // 状态栏错误消息（红）
 }
 
 /// 依主题返回强调色板。`dark = ui.visuals().dark_mode` 与 `self.dark_mode` 一致。
@@ -247,6 +274,7 @@ fn palette(dark: bool) -> Palette {
         Palette {
             action: Color32::from_rgb(140, 200, 240),
             keys: Color32::from_rgb(180, 210, 130),
+            modes: Color32::from_rgb(150, 195, 235),
             empty: Color32::from_rgb(200, 60, 60),
             script: Color32::from_rgb(240, 170, 90),
             ok: Color32::from_rgb(120, 220, 160),
@@ -257,6 +285,7 @@ fn palette(dark: bool) -> Palette {
         Palette {
             action: Color32::from_rgb(30, 88, 178),
             keys: Color32::from_rgb(68, 128, 44),
+            modes: Color32::from_rgb(48, 96, 160),
             empty: Color32::from_rgb(190, 32, 32),
             script: Color32::from_rgb(196, 112, 26),
             ok: Color32::from_rgb(40, 148, 78),
@@ -297,6 +326,8 @@ pub struct EditorApp {
 
     pub selected: Option<usize>,
     pub keys_edit: Option<KeysDraft>,
+    /// 主窗口「生效模式」独立编辑弹窗草稿；`None` 表示未打开。
+    pub modes_edit: Option<ModesDraft>,
     pub confirm: Option<Confirm>,
     /// 「备份恢复」弹窗：`Some` 表示打开，含备用列表。
     pub backup_ui: Option<BackupUi>,
@@ -307,6 +338,8 @@ pub struct EditorApp {
     pub emacs_draft: Option<EmacsDraft>,
     /// 正在被「修改后」子编辑窗编辑的 Emacs 行（含其录制态/模式），`None` 表示未打开。
     emacs_row_edit: Option<EmacsRowEdit>,
+    /// 正在被「生效模式」列子编辑窗编辑的 Emacs 行，`None` 表示未打开。
+    emacs_modes_edit: Option<EmacsModesEdit>,
 
     /// 是否显示「快捷键设置完整说明」帮助弹窗。
     show_help: bool,
@@ -327,11 +360,13 @@ impl EditorApp {
             dark_mode: true,
             selected: None,
             keys_edit: None,
+            modes_edit: None,
             confirm: None,
             backup_ui: None,
             emacs_modal: false,
             emacs_draft: None,
             emacs_row_edit: None,
+            emacs_modes_edit: None,
             show_help: false,
             msg: None,
         }
@@ -351,10 +386,12 @@ impl EditorApp {
                 self.dirty = false;
                 self.selected = None;
                 self.keys_edit = None;
+                self.modes_edit = None;
                 self.backup_ui = None;
                 self.emacs_modal = false;
                 self.emacs_draft = None;
                 self.emacs_row_edit = None;
+                self.emacs_modes_edit = None;
                 self.search.clear();
                 self.sort = None;
                 let name = path
@@ -459,6 +496,7 @@ impl EditorApp {
         let Some(e) = self.file.entries.get(index).cloned() else {
             return;
         };
+        self.modes_edit = None; // 两个弹窗互斥，避免双层遮罩叠加上下文混乱
         self.keys_edit = Some(KeysDraft {
             index,
             keys: e.keys,
@@ -466,6 +504,41 @@ impl EditorApp {
             recording: false,
             mode: RecordMode::Replace,
         });
+    }
+
+    /// 主窗口「生效模式」独立编辑弹窗：只改 modes，不触碰 keys 及其他字段。
+    pub fn begin_modes_edit(&mut self, index: usize) {
+        let Some(e) = self.file.entries.get(index).cloned() else {
+            return;
+        };
+        self.keys_edit = None; // 与按键编辑弹窗互斥
+        self.modes_edit = Some(ModesDraft {
+            index,
+            modes: e.modes,
+        });
+    }
+
+    /// 应用主窗口「生效模式」编辑结果（就地字节替换 modes，缺字段时静默放弃）。
+    pub fn apply_modes_edit(&mut self, d: &ModesDraft) {
+        let Some(e) = self.file.entries.get(d.index) else {
+            return;
+        };
+        if e.modes == d.modes {
+            return; // 无实质变化：不标记未保存
+        }
+        let Some(raw0) = self.raw.clone() else {
+            return;
+        };
+        match set_entry_modes(&raw0, d.index, &d.modes) {
+            Ok(nr) => {
+                if let Ok(f) = parse_keymap_bytes(&nr) {
+                    self.raw = Some(nr);
+                    self.file = f;
+                    self.dirty = true;
+                }
+            }
+            Err(_) => {}
+        }
     }
 
     /// 就地编辑某条 keys/modes（集成测试通过此公开入口走真实保存链路）。
@@ -523,7 +596,12 @@ impl EditorApp {
             Some(d) => d.new_keys.clone(),
             None => EMACS_PRESET.iter().map(item_default_after).collect(),
         };
-        let mut plan: Vec<(usize, String)> = Vec::new();
+        // 弹窗「生效模式」列的编辑结果；None=不改该条目 modes。
+        let edit_modes: Vec<Option<String>> = match &self.emacs_draft {
+            Some(d) => d.new_modes.clone(),
+            None => EMACS_PRESET.iter().map(|_| None).collect(),
+        };
+        let mut plan: Vec<(usize, String, Option<String>)> = Vec::new();
         let mut planned: HashSet<usize> = HashSet::new();
 
         // 语义行：先把目标键的占用者移走（若有），再把语义操作绑定到目标键。
@@ -536,7 +614,7 @@ impl EditorApp {
                     let home = item.shift.unwrap_or(&target).to_owned();
                     let dst = free_reloc_target(&home, &occupied);
                     let nk = relocate_keys_form(&e.keys, &target, &dst);
-                    plan_move(&mut plan, &mut planned, &mut occupied, &snapshot, i, nk);
+                    plan_move(&mut plan, &mut planned, &mut occupied, &snapshot, i, nk, None);
                 }
             }
             if let Some(i) = snapshot
@@ -545,7 +623,9 @@ impl EditorApp {
                     e.action.as_deref() == Some(bind_op) && !key_matches(&e.keys, &target)
                 })
             {
-                plan_move(&mut plan, &mut planned, &mut occupied, &snapshot, i, target);
+                // 目标条目：可能一并改写其生效模式（用户经弹窗「生效模式」列编辑）。
+                let m = edit_modes.get(row).cloned().unwrap_or(None);
+                plan_move(&mut plan, &mut planned, &mut occupied, &snapshot, i, target, m);
             }
         }
 
@@ -559,16 +639,20 @@ impl EditorApp {
                 if key_matches(&snapshot[i].keys, item.key) {
                     let dst = free_reloc_target(&target, &occupied);
                     let nk = relocate_keys_form(&snapshot[i].keys, item.key, &dst);
-                    plan_move(&mut plan, &mut planned, &mut occupied, &snapshot, i, nk);
+                    plan_move(&mut plan, &mut planned, &mut occupied, &snapshot, i, nk, None);
                 }
             }
         }
 
-        for (i, new_keys) in &plan {
+        for (i, new_keys, target_modes) in &plan {
             let d = KeysDraft {
                 index: *i,
                 keys: new_keys.clone(),
-                modes: snapshot[*i].modes.clone(), // 只挪键，模式保持不变
+                // 语义行目标条目按用户设置改写 modes；其余条目只挪键、模式保持原样。
+                modes: match target_modes {
+                    Some(m) => m.clone(),
+                    None => snapshot[*i].modes.clone(),
+                },
                 recording: false,
                 mode: RecordMode::Replace,
             };
@@ -589,7 +673,7 @@ impl eframe::App for EditorApp {
         // 关闭拦截：存在未保存修改时先弹确认；快捷键弹窗打开时让用户先关闭弹窗。
         let close_req = ctx.input(|i| i.viewport().close_requested());
         if close_req {
-            if self.keys_edit.is_some() {
+            if self.keys_edit.is_some() || self.modes_edit.is_some() {
                 ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
             } else if self.dirty && self.confirm.is_none() {
                 self.confirm = Some(Confirm::UnsavedClose);
@@ -660,6 +744,17 @@ impl eframe::App for EditorApp {
             }
         }
 
+        // 「生效模式」独立编辑弹窗（与按键编辑弹窗互斥）：同样「取出→渲染→写回」保留编辑。
+        if let Some(mut d) = self.modes_edit.take() {
+            let mut close = false;
+            let resp = egui::Modal::new(egui::Id::new("modes_modal")).show(ctx, |ui| {
+                self.ui_modes_edit(ui, &mut d, &mut close);
+            });
+            if !close && !resp.backdrop_response.clicked() {
+                self.modes_edit = Some(d);
+            }
+        }
+
         // 确认对话框：同样官方 Modal。
         if self.confirm.is_some() {
             let mut close = false;
@@ -706,6 +801,15 @@ impl eframe::App for EditorApp {
                 if !close && !resp.backdrop_response.clicked() {
                     self.emacs_row_edit = Some(row_edit);
                 }
+            } else if let Some(mut m_edit) = self.emacs_modes_edit.take() {
+                // 「生效模式」列的子编辑窗：复用 ui_modes_editor，仅编辑该行目标条目 modes。
+                let mut close = false;
+                let resp = egui::Modal::new(egui::Id::new("emacs_modes_modal")).show(ctx, |ui| {
+                    self.ui_emacs_modes_edit(ui, &mut m_edit, &mut close);
+                });
+                if !close && !resp.backdrop_response.clicked() {
+                    self.emacs_modes_edit = Some(m_edit);
+                }
             } else {
                 let mut close = false;
                 let resp = egui::Modal::new(egui::Id::new("emacs_modal")).show(ctx, |ui| {
@@ -715,6 +819,7 @@ impl eframe::App for EditorApp {
                     self.emacs_modal = false;
                     self.emacs_draft = None;
                     self.emacs_row_edit = None;
+                    self.emacs_modes_edit = None;
                 }
             }
         }
@@ -850,86 +955,110 @@ impl EditorApp {
         // 固定标题栏：使用 egui_extras::Table，其 header 不随 body 纵向滚动，
         // 天然实现「滚动列表时表头始终固定在顶部」。列宽用 Column 定义保证表头与内容逐列对齐。
         use egui_extras::{Column, TableBuilder};
-        let col_action = Column::auto()
-            .clip(true)
-            .at_least(140.0)
-            .resizable(true);
-        // 描述列：非 resizable 的 remainder，每帧按窗口剩余宽重新填充（自适应）。
-        // 若标 resizable，egui_extras 会将其当固定宽存储，窗口变窄时不再收缩，
-        // 把最右侧“快捷键”列挤出视口。
-        let col_desc = Column::remainder()
-            .clip(true)
-            .at_least(60.0);
-        let col_keys = Column::auto()
-            .clip(true)
-            .at_least(100.0)
-            .resizable(true);
+        // 全部列都可拖拽调整宽度；旧版用「非 resizable 的 remainder 描述列」作窄窗兜底，
+        // 但该列因此无法调整。现改为：所有列 resizable，表头可拖调整；窗口变窄导致列总宽
+        // 超过可视区时，由外层的横向 ScrollArea 出横向滚动条兜底，不再把尾列挤出视口。
+        let col_action = Column::auto().clip(true).at_least(120.0).resizable(true);
+        let col_desc = Column::auto().clip(true).at_least(150.0).resizable(true);
+        let col_modes = Column::auto().clip(true).at_least(110.0).resizable(true);
+        let col_keys = Column::auto().clip(true).at_least(110.0).resizable(true);
 
-        TableBuilder::new(ui)
-            .striped(true)
-            .cell_layout(egui::Layout::left_to_right(egui::Align::Center))
-            .column(col_action)
-            .column(col_desc)
-            .column(col_keys)
-            .min_scrolled_height(0.0)
-            .header(22.0, |mut header| {
-                header.col(|ui| self.ui_sort_header(ui, SortCol::Action, T.col_action));
-                header.col(|ui| self.ui_sort_header(ui, SortCol::Desc, T.col_desc));
-                header.col(|ui| self.ui_sort_header(ui, SortCol::Keys, T.col_keys));
-            })
-            .body(|mut body| {
-                // 闭包内只读 `self`，点击只写局部下标；待编辑申请统一在 body 结束后应用，
-                // 避免借用冲突。
-                let mut pending_edit: Option<usize> = None;
-                let p = palette(self.dark_mode);
-                for &idx in &rows {
-                    body.row(20.0, |mut row| {
-                        let e = &self.file.entries[idx];
-                        match &e.action {
-                            Some(a) => {
+        // 横滚动区给一个不小于各列最小宽之和的最小内容宽，可视区不足时出现横向滚动条。
+        egui::ScrollArea::horizontal()
+            .id_salt("main_table_hscroll")
+            .auto_shrink([false, false])
+            .show(ui, |ui| {
+                ui.set_min_width(600.0);
+                TableBuilder::new(ui)
+                    .striped(true)
+                    .cell_layout(egui::Layout::left_to_right(egui::Align::Center))
+                    .column(col_action)
+                    .column(col_desc)
+                    .column(col_modes)
+                    .column(col_keys)
+                    .min_scrolled_height(0.0)
+                    .header(22.0, |mut header| {
+                        header.col(|ui| self.ui_sort_header(ui, SortCol::Action, T.col_action));
+                        header.col(|ui| self.ui_sort_header(ui, SortCol::Desc, T.col_desc));
+                        header.col(|ui| self.ui_sort_header(ui, SortCol::Modes, T.col_modes));
+                        header.col(|ui| self.ui_sort_header(ui, SortCol::Keys, T.col_keys));
+                    })
+                    .body(|mut body| {
+                        // 闭包内只读 `self`，点击只写局部下标；待编辑申请统一在 body 结束后应用，
+                        // 避免借用冲突。
+                        let mut pending_edit: Option<usize> = None;
+                        let mut pending_modes: Option<usize> = None;
+                        let p = palette(self.dark_mode);
+                        for &idx in &rows {
+                            body.row(20.0, |mut row| {
+                                let e = &self.file.entries[idx];
+                                match &e.action {
+                                    Some(a) => {
+                                        row.col(|ui| {
+                                            ui.label(RichText::new(a).monospace().color(p.action));
+                                        });
+                                        row.col(|ui| {
+                                            ui.label(RichText::new(action_description(a)));
+                                        });
+                                    }
+                                    None => {
+                                        row.col(|ui| {
+                                            ui.label(RichText::new(T.op_script).color(p.script));
+                                        });
+                                        row.col(|ui| {
+                                            let preview = e.target_preview(60);
+                                            ui.label(RichText::new(preview).weak());
+                                        });
+                                    }
+                                }
+                                // 生效模式列：留空=全部模式（弱化），点击弹独立编辑窗。
+                                let modes_empty = e.modes.trim().is_empty();
+                                let (modes_text, modes_color) = if modes_empty {
+                                    (T.modes_empty, p.script)
+                                } else {
+                                    (e.modes.as_str(), p.modes)
+                                };
                                 row.col(|ui| {
-                                    ui.label(
-                                        RichText::new(a).monospace().color(p.action),
-                                    );
+                                    if ui
+                                        .selectable_label(
+                                            false,
+                                            RichText::new(modes_text).monospace().color(modes_color),
+                                        )
+                                        .on_hover_text(T.modes_cell_hint)
+                                        .clicked()
+                                    {
+                                        pending_modes = Some(idx);
+                                    }
                                 });
+                                let keys_color = if e.keys.trim().is_empty() {
+                                    p.empty
+                                } else {
+                                    p.keys
+                                };
+                                let is_sel = self.selected == Some(idx);
                                 row.col(|ui| {
-                                    ui.label(RichText::new(action_description(a)));
+                                    if ui
+                                        .selectable_label(
+                                            is_sel,
+                                            RichText::new(&e.keys).monospace().color(keys_color),
+                                        )
+                                        .on_hover_text(T.keys_cell_hint)
+                                        .clicked()
+                                    {
+                                        pending_edit = Some(idx);
+                                    }
                                 });
-                            }
-                            None => {
-                                row.col(|ui| {
-                                    ui.label(RichText::new(T.op_script).color(p.script));
-                                });
-                                row.col(|ui| {
-                                    let preview = e.target_preview(60);
-                                    ui.label(RichText::new(preview).weak());
-                                });
-                            }
+                            });
                         }
-                        let keys_color = if e.keys.trim().is_empty() {
-                            p.empty
-                        } else {
-                            p.keys
-                        };
-                        let is_sel = self.selected == Some(idx);
-                        row.col(|ui| {
-                            if ui
-                                .selectable_label(
-                                    is_sel,
-                                    RichText::new(&e.keys).monospace().color(keys_color),
-                                )
-                                .on_hover_text(T.keys_cell_hint)
-                                .clicked()
-                            {
-                                pending_edit = Some(idx);
-                            }
-                        });
+                        if let Some(idx) = pending_edit {
+                            self.selected = Some(idx);
+                            self.begin_keys_edit(idx);
+                        }
+                        if let Some(idx) = pending_modes {
+                            self.selected = Some(idx);
+                            self.begin_modes_edit(idx);
+                        }
                     });
-                }
-                if let Some(idx) = pending_edit {
-                    self.selected = Some(idx);
-                    self.begin_keys_edit(idx);
-                }
             });
     }
 
@@ -982,6 +1111,7 @@ impl EditorApp {
                 .map(action_description)
                 .unwrap_or_default()
                 .to_string(),
+            SortCol::Modes => e.modes.clone(),
             SortCol::Keys => e.keys.clone(),
         }
     }
@@ -1076,6 +1206,59 @@ impl EditorApp {
                 );
                 if ui.add(ok).clicked() {
                     self.apply_keys_edit(d);
+                    *close = true;
+                }
+                if ui.add(egui::Button::new(T.cancel)).clicked() {
+                    *close = true;
+                }
+            });
+        });
+        ui.add_space(6.0);
+    }
+
+    /// 主窗口「生效模式」独立编辑弹窗（与按键编辑弹窗互斥）：
+    /// 复用 `ui_modes_editor` 的勾选/自由输入/模式说明，确定时经 `apply_modes_edit`
+    /// 就地字节替换该条 modes（缺字段时静默放弃，不改其它字节）。
+    fn ui_modes_edit(&mut self, ui: &mut egui::Ui, d: &mut ModesDraft, close: &mut bool) {
+        ui.set_min_width(430.0);
+        // 标题 + 右上角关闭（同其它弹窗布局）。
+        ui.horizontal(|ui| {
+            ui.heading(T.modes_edit_title);
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                if ui
+                    .add(egui::Button::new("✖").frame(false))
+                    .on_hover_text(T.btn_close)
+                    .clicked()
+                {
+                    *close = true;
+                }
+            });
+        });
+        ui.add_space(4.0);
+        self.ui_modes_editor(ui, &mut d.modes);
+        // 当前条目信息（只读，红字显示其快捷键便于识别在改哪一条）。
+        let cur = &self.file.entries[d.index];
+        ui.add_space(6.0);
+        ui.label(RichText::new(T.ed_cur_title).strong());
+        self.ui_entry_command(ui, cur, true);
+        ui.add_space(8.0);
+        ui.label(
+            RichText::new(T.ed_modes_hint)
+                .weak()
+                .small()
+                .color(Color32::from_gray(90)),
+        );
+        ui.add_space(8.0);
+        // 底部操作按钮：右对齐。
+        ui.horizontal(|ui| {
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                let ok = egui::Button::new(
+                    RichText::new(T.ok)
+                        .strong()
+                        .color(palette(ui.visuals().dark_mode).ok),
+                );
+                if ui.add(ok).clicked() {
+                    self.apply_modes_edit(d);
                     *close = true;
                 }
                 if ui.add(egui::Button::new(T.cancel)).clicked() {
@@ -1447,60 +1630,77 @@ impl EditorApp {
         );
         // 在 body 闭包内只写局部下标，闭包结束后统一应用，避免借用冲突。
         let mut pending_row_edit: Option<usize> = None;
+        let mut pending_modes_edit: Option<usize> = None;
         let mut pending_reset: Option<usize> = None;
         ui.scope_builder(egui::UiBuilder::new().max_rect(rect), |ui| {
-            TableBuilder::new(ui)
-                .striped(true)
-                .cell_layout(egui::Layout::left_to_right(egui::Align::Center))
-                // 除描述列外，各列宽度区间都要「足够小」，保证即使窗口缩到最窄，所有固定最小
-                // 宽之和仍落在 modal_w 内——否则描述列被压到 at_least 后便无法再收缩，会把
-                // 靠右的“复位”列挤出视口。描述列保持非 resizable 的 remainder，每帧按
-                // 窗口剩余宽重新填充（自适应），兼作唯一吸收器。
-                .column(
-                    Column::initial(160.0)
-                        .resizable(true)
-                        .range(110.0..=320.0)
-                        .clip(true), // 操作名（超长截断+tooltip）
-                )
-                .column(
-                    Column::remainder().clip(true).at_least(48.0), // 描述（吸收剩余宽）
-                )
-                .column(
-                    Column::initial(120.0)
-                        .resizable(true)
-                        .range(96.0..=240.0)
-                        .clip(true), // 修改前
-                )
-                .column(
-                    Column::initial(140.0)
-                        .resizable(true)
-                        .range(128.0..=300.0)
-                        .clip(true), // 修改后
-                )
-                .column(
-                    Column::initial(50.0)
-                        .resizable(true)
-                        .range(42.0..=140.0)
-                        .clip(true), // 复位
-                )
-                .max_scroll_height(320.0)
-                .header(ROW_H, |mut header| {
-                    header.col(|ui| {
-                        ui.label(RichText::new(T.emacs_col_op).strong());
-                    });
-                    header.col(|ui| {
-                        ui.label(RichText::new(T.emacs_col_desc).strong());
-                    });
-                    header.col(|ui| {
-                        ui.label(RichText::new(T.emacs_before).strong());
-                    });
-                    header.col(|ui| {
-                        ui.label(RichText::new(T.emacs_after).strong());
-                    });
-                    header.col(|ui| {
-                        ui.label(RichText::new(T.emacs_reset).strong());
-                    });
-                })
+            egui::ScrollArea::horizontal()
+                        .id_salt("emacs_table_hscroll")
+                        .auto_shrink([false, false])
+                        .show(ui, |ui| {
+                            ui.set_min_width(820.0);
+                            TableBuilder::new(ui)
+                                .striped(true)
+                                .cell_layout(egui::Layout::left_to_right(egui::Align::Center))
+                                // 全部列都可拖拽调整宽度；描述列不再是「仅占剩余宽的吸收列」。
+                                // 列总宽超出 modal_w 时由内层横向 ScrollArea 出滚动条，不再把
+                                // 尾部「复位」列挤出视口。
+                                .column(
+                                    Column::initial(160.0)
+                                        .resizable(true)
+                                        .range(96.0..=360.0)
+                                        .clip(true), // 操作名
+                                )
+                                .column(
+                                    Column::initial(200.0)
+                                        .resizable(true)
+                                        .range(80.0..=900.0)
+                                        .clip(true), // 描述（可拖）
+                                )
+                                .column(
+                                    Column::initial(120.0)
+                                        .resizable(true)
+                                        .range(88.0..=260.0)
+                                        .clip(true), // 修改前
+                                )
+                                .column(
+                                    Column::initial(130.0)
+                                        .resizable(true)
+                                        .range(100.0..=340.0)
+                                        .clip(true), // 生效模式
+                                )
+                                .column(
+                                    Column::initial(140.0)
+                                        .resizable(true)
+                                        .range(120.0..=340.0)
+                                        .clip(true), // 修改后
+                                )
+                                .column(
+                                    Column::initial(50.0)
+                                        .resizable(true)
+                                        .range(42.0..=140.0)
+                                        .clip(true), // 复位
+                                )
+                                .max_scroll_height(320.0)
+                                .header(ROW_H, |mut header| {
+                                    header.col(|ui| {
+                                        ui.label(RichText::new(T.emacs_col_op).strong());
+                                    });
+                                    header.col(|ui| {
+                                        ui.label(RichText::new(T.emacs_col_desc).strong());
+                                    });
+                                    header.col(|ui| {
+                                        ui.label(RichText::new(T.emacs_before).strong());
+                                    });
+                                    header.col(|ui| {
+                                        ui.label(RichText::new(T.emacs_mode_col).strong());
+                                    });
+                                    header.col(|ui| {
+                                        ui.label(RichText::new(T.emacs_after).strong());
+                                    });
+                                    header.col(|ui| {
+                                        ui.label(RichText::new(T.emacs_reset).strong());
+                                    });
+                                })
                 .body(|mut body| {
                     for (row_i, item) in EMACS_PRESET.iter().enumerate() {
                         // 操作名：语义行显示语义操作；释放行显示当前占用原键的操作，
@@ -1542,16 +1742,51 @@ impl EditorApp {
                                             .color(pal.action),
                                     )
                                     .truncate(),
-                                )
-                                .on_hover_text(op_name.as_ref());
+                                );
                             });
                             row.col(|ui| {
-                                ui.add(egui::Label::new(item.desc).truncate())
-                                    .on_hover_text(item.desc);
+                                ui.add(egui::Label::new(item.desc).truncate());
                             });
                             row.col(|ui| {
                                 ui.label(RichText::new(before.as_str()).monospace().weak())
                                     .on_hover_text(before.as_str());
+                            });
+                            row.col(|ui| {
+                                // 「生效模式」列：语义行显示目标条目 modes（点击打开子编辑窗）；
+                                // 释放行固定显示「不修改」并禁用（释放时只挪键、不动任何 modes）。
+                                if item.bind.is_none() {
+                                    ui.add_enabled_ui(false, |ui| {
+                                        ui.button(RichText::new(T.emacs_modes_unset).weak())
+                                    });
+                                } else {
+                                    let op = item.bind.unwrap();
+                                    let cur = self
+                                        .file
+                                        .entries
+                                        .iter()
+                                        .find(|e| e.action.as_deref() == Some(op))
+                                        .map(|e| e.modes.clone())
+                                        .unwrap_or_default();
+                                    // 编辑结果显示在草稿中；未编辑则显示目标条目当前 modes。
+                                    let shown = draft
+                                        .new_modes
+                                        .get(row_i)
+                                        .and_then(|m| m.as_ref())
+                                        .cloned()
+                                        .unwrap_or(cur);
+                                    let display = if shown.trim().is_empty() {
+                                        T.modes_empty
+                                    } else {
+                                        shown.as_str()
+                                    };
+                                    if ui
+                                        .button(RichText::new(display).monospace())
+                                        .on_hover_text(T.emacs_mode_tip)
+                                        .clicked()
+                                    {
+                                        pending_modes_edit = Some(row_i);
+                                    }
+                                }
                             });
                             row.col(|ui| {
                                 // 「修改后」列：点击打开子编辑窗，复用主窗口快捷键录制控件。
@@ -1580,6 +1815,7 @@ impl EditorApp {
                     }
                 });
         });
+        });
 
         // 闭包结束后统一应用：复位直接改草稿；打开子编辑窗则初始化 EmacsRowEdit。
         if let Some(r) = pending_reset {
@@ -1593,6 +1829,21 @@ impl EditorApp {
                 recording: false,
                 mode: RecordMode::Replace,
             });
+        }
+        if let Some(r) = pending_modes_edit {
+            // 打开「生效模式」子编辑窗，预填该行目标条目当前 modes（已编辑过则用草稿值）。
+            let cur = EMACS_PRESET[r]
+                .bind
+                .and_then(|op| {
+                    self.file
+                        .entries
+                        .iter()
+                        .find(|e| e.action.as_deref() == Some(op))
+                        .map(|e| e.modes.clone())
+                })
+                .unwrap_or_default();
+            let cur = draft.new_modes.get(r).and_then(|m| m.clone()).unwrap_or(cur);
+            self.emacs_modes_edit = Some(EmacsModesEdit { row: r, modes: cur });
         }
 
         self.emacs_draft = Some(draft);
@@ -1661,6 +1912,62 @@ impl EditorApp {
                     // 写回本行草稿（行对齐由调用方保证，此处按需截断越界）。
                     if let Some(keys) = self.emacs_draft.as_mut().and_then(|e| e.new_keys.get_mut(d.row)) {
                         *keys = d.keys.clone();
+                    }
+                    *close = true;
+                }
+                if ui.add(egui::Button::new(T.cancel)).clicked() {
+                    *close = true;
+                }
+            });
+        });
+        ui.add_space(6.0);
+    }
+
+    /// 「一键 Emacs」弹窗「生效模式」列的子编辑窗：复用 `ui_modes_editor`，仅编辑该行
+    /// 目标条目的 modes。「确定」把结果写回 `emacs_draft.new_modes[row]`，应用时生效；
+    /// 「取消」/× /点遮罩则丢弃。
+    fn ui_emacs_modes_edit(&mut self, ui: &mut egui::Ui, m: &mut EmacsModesEdit, close: &mut bool) {
+        ui.set_min_width(430.0);
+        ui.horizontal(|ui| {
+            ui.heading(T.emacs_modes_edit_title);
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                if ui
+                    .add(egui::Button::new("✖").frame(false))
+                    .on_hover_text(T.btn_close)
+                    .clicked()
+                {
+                    *close = true;
+                }
+            });
+        });
+        ui.add_space(4.0);
+        self.ui_modes_editor(ui, &mut m.modes);
+        // 提示该行编辑作用于哪个语义操作。
+        if let Some(op) = EMACS_PRESET.get(m.row).and_then(|it| it.bind) {
+            ui.add_space(6.0);
+            ui.label(RichText::new(T.ed_modes_hint).weak().small());
+            ui.add_space(4.0);
+            ui.label(
+                RichText::new(format!("{}  {op}", T.emacs_mode_target))
+                    .monospace()
+                    .strong(),
+            );
+        }
+        ui.add_space(8.0);
+        ui.horizontal(|ui| {
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                let ok = egui::Button::new(
+                    RichText::new(T.ok)
+                        .strong()
+                        .color(palette(ui.visuals().dark_mode).ok),
+                );
+                if ui.add(ok).clicked() {
+                    if let Some(slot) = self
+                        .emacs_draft
+                        .as_mut()
+                        .and_then(|e| e.new_modes.get_mut(m.row))
+                    {
+                        *slot = Some(m.modes.clone());
                     }
                     *close = true;
                 }
