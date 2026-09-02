@@ -4,7 +4,7 @@
 //! 展示、点击“快捷键”一栏即可修改该快捷键。不再编辑 modes/动作/脚本，也不做增删。
 //! 仅做界面编排，调用 `model` 与 `io` 完成数据操作。
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use eframe::egui::{self, Color32, FontData, FontDefinitions, FontFamily, RichText};
@@ -15,7 +15,9 @@ use crate::io::{
     read_keymap_bytes, restore_backup, set_entry_keys, set_entry_modes, write_keymap_raw,
     KeymapError,
 };
-use crate::model::{action_description, modes_has, toggle_mode, KeymapEntry, KeymapFile, MODE_DESCRIPTIONS};
+use crate::model::{
+    action_description, modes_has, toggle_mode, KeymapEntry, KeymapFile, MODE_DESCRIPTIONS,
+};
 
 type Msg = (MsgKind, String);
 
@@ -65,8 +67,8 @@ pub struct EmacsItem {
     pub key: &'static str,
     /// 中文描述（如「光标移动到行首」）。
     pub desc: &'static str,
-    /// 语义对应的 WindTerm 操作名；`None` 表示该键无 WindTerm 语义对应操作，仅释放给 shell。
-    pub bind: Option<&'static str>,
+    /// 语义对应的 WindTerm 操作名，将绑定到 Emacs 标准键。
+    pub bind: &'static str,
     /// 本键当前被其它操作占用时，占用者将被移位到的键。`None` 表示默认键本就空闲，无需移位。
     pub shift: Option<&'static str>,
 }
@@ -75,42 +77,84 @@ pub struct EmacsItem {
 ///
 /// 原则：终端（bash/tcsh 的 readline）按 Emacs 编辑键工作，readline 不拦截 Ctrl+Shift /
 /// Alt+Shift，故被占用的键统一先把占用者移到其 Shift 变体（个别与 WindTerm 其它操作
-/// 相撞的用空闲位），再把语义对应的 WindTerm 操作绑定到 Emacs 标准键；无对应操作的
-/// 键则直接释放给 shell 透传。
+/// 相撞的用空闲位），再把语义对应的 WindTerm 操作绑定到 Emacs 标准键。
+/// 只收录有对应 WindTerm 操作的键：预设未用到的键（如 Ctrl+S、Ctrl+N）不做让位，
+/// WindTerm 原有功能保持不动。
 pub const EMACS_PRESET: &[EmacsItem] = &[
     // —— 光标导航 ——
-    EmacsItem { key: "<Ctrl+A>", desc: "光标移动到行首", bind: Some("Text.MoveToLineHome"), shift: Some("<Ctrl+Shift+A>") },
-    EmacsItem { key: "<Ctrl+E>", desc: "光标移动到行尾", bind: Some("Text.MoveToLineEnd"), shift: Some("<Ctrl+Shift+E>") },
-    EmacsItem { key: "<Ctrl+B>", desc: "向后移动一个字符", bind: Some("Text.MoveToPreviousChar"), shift: Some("<Ctrl+Shift+O>") },
-    EmacsItem { key: "<Ctrl+F>", desc: "向前移动一个字符", bind: Some("Text.MoveToNextChar"), shift: Some("<Ctrl+Shift+F>") },
-    EmacsItem { key: "<Alt+B>", desc: "向前移动一个词（到词首）", bind: Some("Text.MoveToPreviousWordStart"), shift: Some("<Alt+Shift+B>") },
-    EmacsItem { key: "<Alt+F>", desc: "向后移动一个词（到词首）", bind: Some("Text.MoveToNextWordStart"), shift: None },
+    EmacsItem {
+        key: "<Ctrl+A>",
+        desc: "光标移动到行首",
+        bind: "Text.MoveToLineHome",
+        shift: Some("<Ctrl+Shift+A>"),
+    },
+    EmacsItem {
+        key: "<Ctrl+E>",
+        desc: "光标移动到行尾",
+        bind: "Text.MoveToLineEnd",
+        shift: Some("<Ctrl+Shift+E>"),
+    },
+    EmacsItem {
+        key: "<Ctrl+B>",
+        desc: "向后移动一个字符",
+        bind: "Text.MoveToPreviousChar",
+        shift: Some("<Ctrl+Shift+O>"),
+    },
+    EmacsItem {
+        key: "<Ctrl+F>",
+        desc: "向前移动一个字符",
+        bind: "Text.MoveToNextChar",
+        shift: Some("<Ctrl+Shift+F>"),
+    },
+    EmacsItem {
+        key: "<Alt+B>",
+        desc: "向前移动一个词（到词首）",
+        bind: "Text.MoveToPreviousWordStart",
+        shift: Some("<Alt+Shift+B>"),
+    },
+    EmacsItem {
+        key: "<Alt+F>",
+        desc: "向后移动一个词（到词首）",
+        bind: "Text.MoveToNextWordStart",
+        shift: None,
+    },
     // —— 删除 ——
-    EmacsItem { key: "<Alt+D>", desc: "删除光标后的一个词（kill-word）", bind: Some("Text.DeleteWordToEnd"), shift: Some("<Alt+Shift+D>") },
-    EmacsItem { key: "<Alt+Backspace>", desc: "删除光标前的一个词（backward-kill-word）", bind: Some("Text.DeleteWordToStart"), shift: None },
+    EmacsItem {
+        key: "<Alt+D>",
+        desc: "删除光标后的一个词（kill-word）",
+        bind: "Text.DeleteWordToEnd",
+        shift: Some("<Alt+Shift+D>"),
+    },
+    EmacsItem {
+        key: "<Alt+Backspace>",
+        desc: "删除光标前的一个词（backward-kill-word）",
+        bind: "Text.DeleteWordToStart",
+        shift: None,
+    },
     // —— 行编辑 ——
-    EmacsItem { key: "<Ctrl+K>", desc: "删除光标到行尾（kill-line）", bind: Some("Text.DeleteLineToEnd"), shift: None },
-    EmacsItem { key: "<Ctrl+T>", desc: "交换光标前后的字符（transpose-chars）", bind: Some("Text.TransposeNextChar"), shift: None },
-    EmacsItem { key: "<Alt+T>", desc: "交换光标前后的词（transpose-words）", bind: Some("Text.TransposeNextWord"), shift: None },
-    // —— 无对应操作：释放给 shell ——
-    EmacsItem { key: "<Ctrl+W>", desc: "删除前一词 / 关闭视图", bind: None, shift: Some("<Ctrl+Shift+W>") },
-    EmacsItem { key: "<Ctrl+S>", desc: "前向搜索 / 保存", bind: None, shift: Some("<Ctrl+Shift+I>") },
-    EmacsItem { key: "<Ctrl+X>", desc: "Ctrl 前缀 / 剪切", bind: None, shift: Some("<Ctrl+Shift+X>") },
-    EmacsItem { key: "<Ctrl+G>", desc: "取消 / 跳转到行", bind: None, shift: Some("<Ctrl+Shift+G>") },
-    EmacsItem { key: "<Ctrl+N>", desc: "下一历史 / 新建文件", bind: None, shift: Some("<Ctrl+Shift+N>") },
-    EmacsItem { key: "<Ctrl+P>", desc: "上一历史", bind: None, shift: Some("<Ctrl+Shift+J>") },
-    EmacsItem { key: "<Ctrl+Y>", desc: "yank（粘贴）/ 重做", bind: None, shift: Some("<Ctrl+Shift+Y>") },
-    EmacsItem { key: "<Alt+.>", desc: "补全上个参数", bind: None, shift: Some("<Alt+Shift+.>") },
+    EmacsItem {
+        key: "<Ctrl+K>",
+        desc: "删除光标到行尾（kill-line）",
+        bind: "Text.DeleteLineToEnd",
+        shift: None,
+    },
+    EmacsItem {
+        key: "<Ctrl+T>",
+        desc: "交换光标前后的字符（transpose-chars）",
+        bind: "Text.TransposeNextChar",
+        shift: None,
+    },
+    EmacsItem {
+        key: "<Alt+T>",
+        desc: "交换光标前后的词（transpose-words）",
+        bind: "Text.TransposeNextWord",
+        shift: None,
+    },
 ];
 
-/// 行级「修改后快捷键」的默认值：
-/// 语义绑定行（`bind=Some`）把该操作设到 Emacs 标准键；释放行（`bind=None`）把占用者
-/// 移位到 `shift` 变体以释放原键给 shell。
+/// 行级「修改后快捷键」的默认值：把语义操作设到 Emacs 标准键。
 fn item_default_after(it: &EmacsItem) -> String {
-    match it.bind {
-        Some(_) => it.key.to_string(),
-        None => it.shift.map(str::to_owned).unwrap_or_else(|| it.key.to_string()),
-    }
+    it.key.to_string()
 }
 
 /// 一键 Emacs 弹窗的可编辑状态：与 `EMACS_PRESET` 平行的「修改后快捷键」，用户可逐行
@@ -121,13 +165,23 @@ pub struct EmacsDraft {
     /// 逐行的生效模式编辑结果：`Some(m)` 表示应用时把该行目标条目 modes 改为 `m`；
     /// `None` 表示不变（释放给 shell 的行恒为 `None`）。
     pub new_modes: Vec<Option<String>>,
+    /// 逐行的「让位/占用者生效模式」编辑结果：`Some(m)` 表示应用时把该行被移位的占用者
+    /// 条目 modes 一并改为 `m`；`None` 表示移位时保持占用者原模式不变。
+    pub reloc_modes: Vec<Option<String>>,
+    /// 逐行的「让位目标键」：某 Emacs 键被其它操作占用时，占用者将被移位到的键。
+    /// 空串（`""`）= 未自定义，应用时按自动推演的让位目标；非空=用户经「让位行」
+    /// 指定，应用时优先采用（若与其它绑定冲突则回退到自动空闲位）。
+    pub reloc: Vec<String>,
 }
 
 impl EmacsDraft {
     pub fn defaults() -> Self {
+        let n = EMACS_PRESET.len();
         Self {
             new_keys: EMACS_PRESET.iter().map(item_default_after).collect(),
             new_modes: EMACS_PRESET.iter().map(|_| None).collect(),
+            reloc_modes: EMACS_PRESET.iter().map(|_| None).collect(),
+            reloc: vec![String::new(); n],
         }
     }
 
@@ -140,19 +194,32 @@ impl EmacsDraft {
         if let Some(slot) = self.new_modes.get_mut(row) {
             *slot = None; // 复位同时清除该行的模式自定义设置
         }
+        if let Some(slot) = self.reloc_modes.get_mut(row) {
+            *slot = None; // 复位同时清除该行的占用者模式设置
+        }
+        if let Some(slot) = self.reloc.get_mut(row) {
+            slot.clear(); // 复位该行「修改后」时，让位目标一并回到自动推演
+        }
     }
 }
 
-/// 正在被「修改后」子编辑窗编辑的 Emacs 行草稿。
-///
-/// 复用主窗口快捷键设置的录制控件（`ui_shortcut_recorder`），保存时才写回
-/// `emacs_draft.new_keys[row]`；取消/点遮罩即丢弃。
+/// 正在被 Emacs 子编辑窗编辑的行草稿（复用主窗口快捷键设置的录制控件
+/// `ui_shortcut_recorder`；保存时按 `slot` 写回对应字段，取消/点遮罩即丢弃）。
 #[derive(Debug, Clone)]
 pub struct EmacsRowEdit {
     pub row: usize,
+    /// 写入目标：`AfterKey` 写 `emacs_draft.new_keys[row]`（行的「修改后」快捷键），
+    /// `RelocKey` 写 `emacs_draft.reloc[row]`（让位行的「目标键」）。
+    pub slot: EmacsRowSlot,
     pub keys: String,
     pub recording: bool,
     pub mode: RecordMode,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EmacsRowSlot {
+    AfterKey,
+    RelocKey,
 }
 
 /// 主窗口「生效模式」独立编辑弹窗草稿：仅修改一条绑定的 modes。
@@ -166,7 +233,16 @@ pub struct ModesDraft {
 #[derive(Debug, Clone)]
 pub struct EmacsModesEdit {
     pub row: usize,
+    /// 编辑作用于哪类条目：`Binding` 作用于该行语义目标条目（写 `new_modes`），
+    /// `Reloc` 作用于该行被移位的占用者条目（写 `reloc_modes`）。
+    pub slot: EmacsModesSlot,
     pub modes: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EmacsModesSlot {
+    Binding,
+    Reloc,
 }
 
 /// 为被挤出原键的占用者挑选一个不冲突的目标键：
@@ -190,11 +266,24 @@ fn free_reloc_target(base: &str, occupied: &HashSet<String>) -> String {
     base.to_owned()
 }
 
+/// 解析某行「让位」的实际目标键：`preferred`（用户经让位行设定的目标）非空且空闲时优先
+/// 采用它；否则回退到 `free_reloc_target` 的自动空闲位。不产生**新的**重复绑定（原本不
+/// 共享同一键的两个功能不会因移位而挤到同一键上）；原先就共享同一键的占用者由调用方
+/// 按「原键 → 目标」分组，整体移到同一新键（保持既有共享关系）。
+fn emacs_reloc_dst(preferred: &str, base: &str, occupied: &HashSet<String>) -> String {
+    if !preferred.is_empty() && !occupied.contains(bare_key(preferred)) {
+        preferred.to_owned()
+    } else {
+        free_reloc_target(base, occupied)
+    }
+}
+
 /// 把 `snapshot[i]` 的键改为 `new_keys` 的计划项：仅当该项此前未安排过才加入，
 /// 并同步维护 `occupied`（移出旧键、占用新键），保证后续挑选空闲目标键时不冲突。
 ///
-/// `modes` 为可选的追加设置：`Some(m)` 表示应用时把该条目 modes 一并改为 `m`（Emacs
-/// 模式列编辑的结果，只作用于语义行的目标条目）；`None` 表示模式的保持原样。
+/// `modes` 为可选的追加设置：`Some(m)` 表示应用时把该条目 modes 一并改为 `m`（语义行
+/// 目标条目用 `new_modes` 的编辑结果，被移位的占用者用 `reloc_modes` 的编辑结果）；
+/// `None` 表示模式保持原样。
 fn plan_move(
     plan: &mut Vec<(usize, String, Option<String>)>,
     planned: &mut HashSet<usize>,
@@ -206,9 +295,9 @@ fn plan_move(
 ) {
     if planned.insert(i) {
         if let Some(old) = snapshot.get(i) {
-            occupied.remove(old.keys.as_str());
+            occupied.remove(bare_key(&old.keys));
         }
-        occupied.insert(new_keys.clone());
+        occupied.insert(bare_key(&new_keys).to_owned());
         plan.push((i, new_keys, modes));
     }
 }
@@ -225,6 +314,16 @@ fn key_matches(entry_key: &str, standard: &str) -> bool {
             && &entry_key[1..entry_key.len() - 1] == standard)
 }
 
+/// 去掉键的「前缀/挂起」包装：`[<Alt+Shift+B>]` → `<Alt+Shift+B>`，裸形原样返回。
+/// 用于占用集合判重，避免「裸形与前缀形是同一按键」被当成两个空闲键而产出重复绑定。
+fn bare_key(k: &str) -> &str {
+    if k.starts_with('[') && k.ends_with(']') && k.len() >= 2 {
+        &k[1..k.len() - 1]
+    } else {
+        k
+    }
+}
+
 /// 移位占用者时尽量保持原形态：占用者是前缀形 `[<Ctrl+W>]`，移位目标也保持前缀形
 /// `[<Ctrl+Shift+W>]`，以保留其「可作序列前缀」的语义；裸形就换成裸形目标。
 fn relocate_keys_form(entry_key: &str, standard: &str, dst: &str) -> String {
@@ -235,16 +334,178 @@ fn relocate_keys_form(entry_key: &str, standard: &str, dst: &str) -> String {
     }
 }
 
-/// 该条目是否构成「当前仍需处理」的 Emacs 冲突：某个 Emacs 标准键被非语义绑定占用，
-/// 或是某个只释放给 shell 的键仍有绑定（裸形或前缀形皆计入）。
+/// 该条目是否构成「当前仍需处理」的 Emacs 冲突：某个 Emacs 标准键被非语义绑定占用
+/// （裸形或前缀形皆计入）。
 fn is_emacs_conflict(e: &KeymapEntry) -> bool {
-    EMACS_PRESET.iter().any(|it| {
-        key_matches(&e.keys, it.key)
-            && match it.bind {
-                Some(op) => e.action.as_deref() != Some(op),
-                None => true,
-            }
+    EMACS_PRESET
+        .iter()
+        .any(|it| key_matches(&e.keys, it.key) && e.action.as_deref() != Some(it.bind))
+}
+
+/// 语义操作的目标条目定位。同名操作可能存在多个不同快捷键的条目（如
+/// `Text.MoveToPreviousChar` 同时绑 `<Ctrl+Left>` 与 `<Meta+Left>`），与
+/// `apply_emacs_preset` 保持同一规则：优先取「已绑在该 Emacs 标准键上」的条目
+/// （再次应用场景，目标已达成），否则取第一条（即将被改绑到标准键的那条）。
+/// 弹窗「修改前」列与生效模式基底都取自这里，保证所见即所改。
+fn emacs_target_entry<'a>(
+    entries: &'a [KeymapEntry],
+    key: &str,
+    op: &str,
+) -> Option<&'a KeymapEntry> {
+    entries
+        .iter()
+        .find(|e| e.action.as_deref() == Some(op) && key_matches(&e.keys, key))
+        .or_else(|| entries.iter().find(|e| e.action.as_deref() == Some(op)))
+}
+
+/// 一键 Emacs 弹窗「修改前」列的可读文本：语义操作当前所在键。
+fn emacs_before_text(entries: &[KeymapEntry], item: &EmacsItem) -> String {
+    emacs_target_entry(entries, item.key, item.bind)
+        .map(|e| e.keys.as_str())
+        .unwrap_or("—")
+        .to_string()
+}
+
+/// 某行的「旧生效模式」：语义操作（目标条目）当前 modes。用于「修改前」列展示，
+/// 以及作为「新生效模式」默认值的基底。
+fn emacs_before_modes(entries: &[KeymapEntry], item: &EmacsItem) -> String {
+    emacs_target_entry(entries, item.key, item.bind)
+        .map(|e| e.modes.clone())
+        .unwrap_or_default()
+}
+
+/// 向逗号分隔的 modes 字符串追加一个 mode token（大小写不敏感判重）；已存在则原样返回。
+pub fn add_mode_token(modes: &str, token: &str) -> String {
+    if modes
+        .split(',')
+        .any(|t| t.trim().eq_ignore_ascii_case(token))
+    {
+        modes.to_string()
+    } else if modes.trim().is_empty() {
+        token.to_string()
+    } else {
+        format!("{modes}, {token}")
+    }
+}
+
+/// 在表格单元格上铺一层行背景色。与 egui_extras 内置 striped 同款 gapless 矩形
+/// （向外扩半个 item_spacing），相邻单元格与上下行无缝拼成整行色带；须在 cell 闭包
+/// 开头调用，画在 striped/hover 底色之上、单元格内容之下。
+fn paint_cell_row_bg(ui: &mut egui::Ui, color: Color32) {
+    let gapless = ui.max_rect().expand2(0.5 * ui.spacing().item_spacing);
+    ui.painter().rect_filled(gapless, 0.0, color);
+}
+
+/// 弹窗标题栏右上角关闭按钮：仿官方 Window 标题栏的关闭 X——两条线段手绘、随主题配色，
+/// 悬停时加粗提亮；热区略大于 `icon_width`，比文本字符「✖」更清晰易点。返回是否被点击。
+fn title_close_button(ui: &mut egui::Ui) -> bool {
+    let size = ui.spacing().icon_width + 2.0;
+    let (rect, resp) = ui.allocate_exact_size(egui::vec2(size, size), egui::Sense::click());
+    resp.widget_info(|| {
+        egui::WidgetInfo::labeled(
+            egui::WidgetType::Button,
+            ui.is_enabled(),
+            T.btn_close_window,
+        )
+    });
+    let visuals = ui.style().interact(&resp);
+    let r = rect.shrink(2.0).expand(visuals.expansion);
+    let stroke = visuals.fg_stroke;
+    ui.painter()
+        .line_segment([r.left_top(), r.right_bottom()], stroke);
+    ui.painter()
+        .line_segment([r.right_top(), r.left_bottom()], stroke);
+    resp.on_hover_text(T.btn_close_window).clicked()
+}
+
+/// Emacs 弹窗表格前 6 个内容列（复位列除外）的宽度权重（相对重要性），同时是比例基准。
+const EMACS_COL_WEIGHTS: [f32; 6] = [92.0, 120.0, 70.0, 66.0, 86.0, 86.0];
+/// 各内容列的最小宽（保证表头/单元格可读，窄窗下夹紧到该值后整表转横向滚动）。
+const EMACS_COL_MINS: [f32; 6] = [60.0, 80.0, 50.0, 46.0, 56.0, 56.0];
+/// 复位列预留的固定宽（按钮列无需随窗口伸缩，多余宽度都归它所在的 remainder）。
+const EMACS_RESET_W: f32 = 46.0;
+
+/// Emacs 弹窗列宽随弹窗宽按比例分配：6 个内容列按 [`EMACS_COL_WEIGHTS`] 权重瓜分
+/// 「可用宽 − 复位列 − 列间距」，各自夹在 [最小宽, 5×权重] 区间。夹紧产生的余量由
+/// 末列 remainder（复位）吸收，保证整表宽恒等于可用宽。
+fn emacs_col_widths(avail_w: f32, spacing_x: f32) -> [f32; 6] {
+    let weight_sum: f32 = EMACS_COL_WEIGHTS.iter().sum();
+    let content_w = (avail_w - EMACS_RESET_W - spacing_x * 6.0).max(0.0);
+    std::array::from_fn(|i| {
+        (EMACS_COL_WEIGHTS[i] / weight_sum * content_w)
+            .clamp(EMACS_COL_MINS[i], EMACS_COL_WEIGHTS[i] * 5.0)
     })
+}
+
+/// 语义命令行「新生效模式」默认值 = 旧 modes + remote（用户经弹窗「生效模式」列编辑过则
+/// 用其值；未编辑时落盘自动追加 remote）。释放行不改模式。
+fn emacs_after_modes_default(entries: &[KeymapEntry], row: usize) -> String {
+    let item = &EMACS_PRESET[row];
+    add_mode_token(&emacs_before_modes(entries, item), "remote")
+}
+
+/// 某行「让位」的推演结果：该条目占用者将被移位到目标键，让出 Emacs 键。
+/// 同一 Emacs 键可能被多个不同操作（如 `Editor.Save` 与 `Text.Save`）同时占用，因此
+/// 按行收集为 Vec；`idx` 为该占用者条目下标、`dst` 为其让位目标键。
+#[derive(Clone)]
+struct EmacsRelocPlan {
+    idx: usize,
+    dst: String,
+}
+
+/// 与 `apply_emacs_preset` 完全一致的「让位目标」推演：按相同顺序、相同占用集合演进，
+/// 算出每行每个占用者将被移位到的目标键（弹窗让位行默认显示这些目标；用户可经让位行
+/// 改写，应用时优先采用改写值）。只读，不改动 `entries`。
+fn emacs_reloc_plan(entries: &[KeymapEntry]) -> Vec<Vec<EmacsRelocPlan>> {
+    let mut occupied: HashSet<String> = entries
+        .iter()
+        .map(|e| bare_key(&e.keys).to_owned())
+        .collect();
+    let mut out: Vec<Vec<EmacsRelocPlan>> = vec![vec![]; EMACS_PRESET.len()];
+
+    // 语义行：先把目标键（默认 = item.key）上的占用者全部移走，再把语义操作改绑到目标键。
+    for (row, item) in EMACS_PRESET.iter().enumerate() {
+        let op = item.bind;
+        let target = item.key;
+        // 原先就共享同一按键的占用者整体移位到同一目标键：共享是既有状态（WindTerm 靠
+        // modes/上下文区分），拆散到两个键反而改变原语义。首个占用者计算空闲目标后，
+        // 同键其余占用者直接复用。
+        let mut dst_by_orig: HashMap<String, String> = HashMap::new();
+        for i in 0..entries.len() {
+            let e = &entries[i];
+            if key_matches(&e.keys, target) && e.action.as_deref() != Some(op) {
+                let orig = bare_key(&e.keys).to_owned();
+                let dst = match dst_by_orig.get(&orig) {
+                    Some(d) => d.clone(),
+                    None => {
+                        let home = item.shift.unwrap_or(target).to_owned();
+                        let d = free_reloc_target(&home, &occupied);
+                        occupied.remove(&orig);
+                        occupied.insert(bare_key(&d).to_owned());
+                        dst_by_orig.insert(orig, d.clone());
+                        d
+                    }
+                };
+                out[row].push(EmacsRelocPlan { idx: i, dst });
+            }
+        }
+        // 目标键上已有该语义操作的条目（再次应用场景）时目标已达成：不再改绑同名操作的
+        // 其它条目（否则它们会被一同挪到目标键，产生重复绑定），occupied 亦无需演进
+        // （目标键本就在集合中，被改绑条目的旧键也让位给了语义行）。
+        let already_on_target = entries
+            .iter()
+            .any(|e| e.action.as_deref() == Some(op) && key_matches(&e.keys, target));
+        if !already_on_target {
+            if let Some(i) = entries
+                .iter()
+                .position(|e| e.action.as_deref() == Some(op) && !key_matches(&e.keys, target))
+            {
+                occupied.remove(bare_key(&entries[i].keys));
+                occupied.insert(bare_key(target).to_owned());
+            }
+        }
+    }
+    out
 }
 
 /// 当前排序状态（列 + 方向）。
@@ -266,6 +527,10 @@ struct Palette {
     ok: Color32,         // 弹窗「确定」强调（绿）
     entry_keys: Color32, // 冲突列表条目 keys（红）
     error: Color32,      // 状态栏错误消息（红）
+    /// Emacs 弹窗「让位行」整行底色：与【让位】标签（script 橙）同色系的低透明度色。
+    reloc_bg: Color32,
+    /// Emacs 弹窗「语义行」整行底色：与弹窗底（dark 27 / light 248）有可感知差异的中性色。
+    semantic_bg: Color32,
 }
 
 /// 依主题返回强调色板。`dark = ui.visuals().dark_mode` 与 `self.dark_mode` 一致。
@@ -280,6 +545,8 @@ fn palette(dark: bool) -> Palette {
             ok: Color32::from_rgb(120, 220, 160),
             entry_keys: Color32::from_rgb(220, 80, 80),
             error: Color32::from_rgb(240, 90, 90),
+            reloc_bg: Color32::from_rgba_unmultiplied(240, 170, 90, 34),
+            semantic_bg: Color32::from_gray(40),
         }
     } else {
         Palette {
@@ -291,6 +558,8 @@ fn palette(dark: bool) -> Palette {
             ok: Color32::from_rgb(40, 148, 78),
             entry_keys: Color32::from_rgb(194, 36, 36),
             error: Color32::from_rgb(198, 40, 40),
+            reloc_bg: Color32::from_rgba_unmultiplied(196, 112, 26, 36),
+            semantic_bg: Color32::from_gray(240),
         }
     }
 }
@@ -340,6 +609,9 @@ pub struct EditorApp {
     emacs_row_edit: Option<EmacsRowEdit>,
     /// 正在被「生效模式」列子编辑窗编辑的 Emacs 行，`None` 表示未打开。
     emacs_modes_edit: Option<EmacsModesEdit>,
+    /// Emacs 弹窗表格上一帧的可用宽。变化时清空 egui_extras 持久化列宽，
+    /// 让各列按当前弹窗宽重新比例分配（同宽下保留用户拖拽结果）。
+    emacs_tbl_w: Option<f32>,
 
     /// 是否显示「快捷键设置完整说明」帮助弹窗。
     show_help: bool,
@@ -367,6 +639,7 @@ impl EditorApp {
             emacs_draft: None,
             emacs_row_edit: None,
             emacs_modes_edit: None,
+            emacs_tbl_w: None,
             show_help: false,
             msg: None,
         }
@@ -579,19 +852,27 @@ impl EditorApp {
     /// 当前配置中仍构成 Emacs 冲突的绑定数（含全部模式变体）：语义绑定行里键未被
     /// 正确绑到该操作、或释放行里原键仍被占用，都算冲突，都需要一键处理。
     pub fn emacs_conflict_count(&self) -> usize {
-        self.file.entries.iter().filter(|e| is_emacs_conflict(e)).count()
+        self.file
+            .entries
+            .iter()
+            .filter(|e| is_emacs_conflict(e))
+            .count()
     }
 
-    /// 一键 Emacs 风格：把每条 Emacs 标准键处理到位——
-    ///   - 语义行（`bind=Some`）：把语义操作（如 `Text.MoveToPreviousWordStart`）改绑到
-    ///     Emacs 键（默认 Alt+B），并把原键已占用的其它操作移位到安全替代键；
-    ///   - 释放行（`bind=None`）：把原键占用者全部移位到替代键，让原键透传给命令行。
+    /// 一键 Emacs 风格：把每条 Emacs 标准键处理到位——把语义操作（如
+    /// `Text.MoveToPreviousWordStart`）改绑到 Emacs 键（默认 Alt+B），并把原键已占用的
+    /// 其它操作移位到安全替代键。预设未收录的键（如 Ctrl+S、Ctrl+N）不做让位。
     /// 编辑目标遵循弹窗内用户可编辑的「修改后快捷键」；未打开弹窗时用预设默认。
     /// 全程经 `apply_keys_edit` 逐条就地字节替换，保证其它字段、编码、BOM、换行符不变。
     /// 返回实际改动的绑定数。
     pub fn apply_emacs_preset(&mut self) -> usize {
         let snapshot = self.file.entries.clone();
-        let mut occupied: HashSet<String> = snapshot.iter().map(|e| e.keys.clone()).collect();
+        // 占用集合用「去前缀包装后的裸键」判重：裸形与前缀形是同一按键，否则移位到
+        // 一个「看似空闲实则被前缀形占用」的键上会产生两个功能共用同一快捷键。
+        let mut occupied: HashSet<String> = snapshot
+            .iter()
+            .map(|e| bare_key(&e.keys).to_owned())
+            .collect();
         let after: Vec<String> = match &self.emacs_draft {
             Some(d) => d.new_keys.clone(),
             None => EMACS_PRESET.iter().map(item_default_after).collect(),
@@ -601,46 +882,87 @@ impl EditorApp {
             Some(d) => d.new_modes.clone(),
             None => EMACS_PRESET.iter().map(|_| None).collect(),
         };
+        // 弹窗「让位/占用者生效模式」列的编辑结果；None=移位时保持占用者原 modes。
+        let reloc_modes: Vec<Option<String>> = match &self.emacs_draft {
+            Some(d) => d.reloc_modes.clone(),
+            None => EMACS_PRESET.iter().map(|_| None).collect(),
+        };
+        // 弹窗「让位行」的用户自定义目标键；"" = 该行未自定义，用自动推演目标。
+        let reloc: Vec<String> = match &self.emacs_draft {
+            Some(d) => d.reloc.clone(),
+            None => vec![String::new(); EMACS_PRESET.len()],
+        };
         let mut plan: Vec<(usize, String, Option<String>)> = Vec::new();
         let mut planned: HashSet<usize> = HashSet::new();
 
         // 语义行：先把目标键的占用者移走（若有），再把语义操作绑定到目标键。
         for (row, item) in EMACS_PRESET.iter().enumerate() {
-            let Some(bind_op) = item.bind else { continue };
+            let bind_op = item.bind;
             let target = after[row].clone();
+            // 原先共享同一按键的占用者整体移位到同一目标键（与 emacs_reloc_plan 推演一致）。
+            let mut dst_by_orig: HashMap<String, String> = HashMap::new();
             for i in 0..snapshot.len() {
                 let e = &snapshot[i];
                 if key_matches(&e.keys, &target) && e.action.as_deref() != Some(bind_op) {
-                    let home = item.shift.unwrap_or(&target).to_owned();
-                    let dst = free_reloc_target(&home, &occupied);
+                    let orig = bare_key(&e.keys).to_owned();
+                    let dst = match dst_by_orig.get(&orig) {
+                        Some(d) => d.clone(),
+                        None => {
+                            let home = item.shift.unwrap_or(&target).to_owned();
+                            let d = emacs_reloc_dst(&reloc[row], &home, &occupied);
+                            dst_by_orig.insert(orig, d.clone());
+                            d
+                        }
+                    };
                     let nk = relocate_keys_form(&e.keys, &target, &dst);
-                    plan_move(&mut plan, &mut planned, &mut occupied, &snapshot, i, nk, None);
+                    plan_move(
+                        &mut plan,
+                        &mut planned,
+                        &mut occupied,
+                        &snapshot,
+                        i,
+                        nk,
+                        reloc_modes[row].clone(),
+                    );
                 }
             }
-            if let Some(i) = snapshot
-                .iter()
-                .position(|e| {
+            // 目标条目定位：优先取「已绑在目标键上」的条目（再次应用场景，目标已达成，
+            // 保持其键位只更新生效模式）；否则取第一条不在目标键上的条目改绑。同名操作
+            // 存在多个不同快捷键条目时只动这一条，其余条目保持原键，且绝不把第二条同
+            // 名条目也挪到目标键（避免重复绑定）。
+            let on_target = snapshot.iter().position(|e| {
+                e.action.as_deref() == Some(bind_op) && key_matches(&e.keys, &target)
+            });
+            let bind_i = on_target.or_else(|| {
+                snapshot.iter().position(|e| {
                     e.action.as_deref() == Some(bind_op) && !key_matches(&e.keys, &target)
                 })
-            {
-                // 目标条目：可能一并改写其生效模式（用户经弹窗「生效模式」列编辑）。
-                let m = edit_modes.get(row).cloned().unwrap_or(None);
-                plan_move(&mut plan, &mut planned, &mut occupied, &snapshot, i, target, m);
-            }
-        }
-
-        // 释放行：把原键占用者（裸形或前缀形）全部移位到目标键。
-        for (row, item) in EMACS_PRESET.iter().enumerate() {
-            if item.bind.is_some() {
-                continue;
-            }
-            let target = after[row].clone();
-            for i in 0..snapshot.len() {
-                if key_matches(&snapshot[i].keys, item.key) {
-                    let dst = free_reloc_target(&target, &occupied);
-                    let nk = relocate_keys_form(&snapshot[i].keys, item.key, &dst);
-                    plan_move(&mut plan, &mut planned, &mut occupied, &snapshot, i, nk, None);
+            });
+            if let Some(i) = bind_i {
+                // 目标条目：可能一并改写其生效模式（用户经弹窗「生效模式」列编辑）。未编辑
+                // 时自动在旧 modes 基础上追加 `remote`，保证 Emacs 命令短句在远程会话也生效。
+                let base = match edit_modes.get(row).cloned().flatten() {
+                    Some(v) => v,
+                    None => add_mode_token(&snapshot[i].modes, "remote"),
+                };
+                // 键位与模式均无实际变化（幂等的再次应用）时跳过，避免无谓改写。
+                if on_target.is_some() && base == snapshot[i].modes {
+                    continue;
                 }
+                let new_keys = if on_target.is_some() {
+                    snapshot[i].keys.clone()
+                } else {
+                    target.clone()
+                };
+                plan_move(
+                    &mut plan,
+                    &mut planned,
+                    &mut occupied,
+                    &snapshot,
+                    i,
+                    new_keys,
+                    Some(base),
+                );
             }
         }
 
@@ -1022,7 +1344,9 @@ impl EditorApp {
                                     if ui
                                         .selectable_label(
                                             false,
-                                            RichText::new(modes_text).monospace().color(modes_color),
+                                            RichText::new(modes_text)
+                                                .monospace()
+                                                .color(modes_color),
                                         )
                                         .on_hover_text(T.modes_cell_hint)
                                         .clicked()
@@ -1146,11 +1470,7 @@ impl EditorApp {
         ui.horizontal(|ui| {
             ui.heading(T.ed_keys_title);
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui
-                    .add(egui::Button::new("✖").frame(false))
-                    .on_hover_text(T.btn_close)
-                    .clicked()
-                {
+                if title_close_button(ui) {
                     *close = true;
                 }
             });
@@ -1185,10 +1505,15 @@ impl EditorApp {
         ui.label(if dark {
             RichText::new(T.ed_keys_hint).weak().small()
         } else {
-            RichText::new(T.ed_keys_hint).small().color(Color32::from_gray(70))
+            RichText::new(T.ed_keys_hint)
+                .small()
+                .color(Color32::from_gray(70))
         });
         ui.label(if dark {
-            RichText::new(T.ed_keys_capture_hint).weak().small().italics()
+            RichText::new(T.ed_keys_capture_hint)
+                .weak()
+                .small()
+                .italics()
         } else {
             RichText::new(T.ed_keys_capture_hint)
                 .small()
@@ -1225,11 +1550,7 @@ impl EditorApp {
         ui.horizontal(|ui| {
             ui.heading(T.modes_edit_title);
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui
-                    .add(egui::Button::new("✖").frame(false))
-                    .on_hover_text(T.btn_close)
-                    .clicked()
-                {
+                if title_close_button(ui) {
                     *close = true;
                 }
             });
@@ -1426,11 +1747,7 @@ impl EditorApp {
             };
             ui.heading(title);
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui
-                    .add(egui::Button::new("✖").frame(false))
-                    .on_hover_text(T.btn_close)
-                    .clicked()
-                {
+                if title_close_button(ui) {
                     close = true;
                 }
             });
@@ -1484,11 +1801,7 @@ impl EditorApp {
         ui.horizontal(|ui| {
             ui.heading(T.help_title);
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui
-                    .add(egui::Button::new("✖").frame(false))
-                    .on_hover_text(T.btn_close)
-                    .clicked()
-                {
+                if title_close_button(ui) {
                     self.show_help = false;
                 }
             });
@@ -1524,11 +1837,11 @@ impl EditorApp {
                         continue;
                     }
                     if let Some(h) = line.trim().strip_prefix('#') {
-                        ui.label(RichText::new(h.trim()).strong().color(Color32::from_rgb(
-                            140,
-                            200,
-                            240,
-                        )));
+                        ui.label(
+                            RichText::new(h.trim())
+                                .strong()
+                                .color(Color32::from_rgb(140, 200, 240)),
+                        );
                         ui.add_space(2.0);
                     } else {
                         ui.label(RichText::new(line).weak());
@@ -1546,347 +1859,512 @@ impl EditorApp {
     }
 
     /// 「一键 Emacs 风格」：列出将与 readline 冲突的键，确认后一键置空（解除）。返回 true 表示应关闭弹窗。
+    /// 「一键 Emacs 风格」弹窗主入口：外层 `egui::Resize` 让用户可拖拽调整弹窗尺寸；Modal
+    /// 的 Area 以 CENTER_CENTER 锚点按内容水平垂直居中，改尺寸后下一帧自动回到父窗口中心，
+    /// 故「可调整大小且始终居中」由 Resize + Modal 共同保证，无需手动跟踪弹窗位置。
     fn ui_emacs(&mut self, ui: &mut egui::Ui) -> bool {
-        // 弹窗宽度按「物理窗口可用宽 / ppp」封顶，保证任意 ppp 与 zoom（Ctrl+滚轮）下整表
-        // 都落在真实可见区内：egui 的宽是「逻辑点」，而原生窗口是「物理像素」，二者须经
-        // pixels_per_point 换算。若仅按逻辑 viewport 宽（默认 980）封顶，在高 ppp 机器上
-        // （如 150% 缩放，viewport 逻辑宽 980 但物理宽只有 980×/ppp≈653 逻辑），弹窗 900
-        // 逻辑宽 × ppp 会远超窗口物理宽，把「修改后/复位」列挤出右缘被窗口裁剪。
-        // inner_rect 给的是原生窗口物理内框，÷ppp 即得真正看得见的逻辑宽度。
-        let ppp = ui.ctx().pixels_per_point();
-        let phys_w = ui
-            .ctx()
-            .input(|i| i.viewport().inner_rect)
-            .map(|r| r.width())
-            .unwrap_or_else(|| ui.ctx().viewport_rect().width());
-        let max_logical = phys_w / ppp;
-        let modal_w = 900.0_f32.min((max_logical - 24.0).max(560.0));
-        ui.set_min_width(modal_w);
-        ui.set_max_width(modal_w);
-        ui.set_width(modal_w);
+        // 可调上限直接以「父窗口（视口）逻辑尺寸」扣减边距得出：`viewport_rect()` 返回的就是
+        // 逻辑点（已含 ppp 换算），此前用手持 `inner_rect/ppp` 会把逻辑宽/高二次缩小，导致
+        // 最大宽远小于「父窗口宽-24」。高上限同样用父窗口高减去一个值，避免固定 1200 在矮窗
+        // 下又把弹窗撑出屏幕。
+        let vp = ui.ctx().viewport_rect();
+        let min_w = 560.0;
+        let min_h = 300.0;
+        let max_w = (vp.width() - 24.0).max(min_w);
+        let max_h = (vp.height() - 56.0).max(min_h);
+        egui::Resize::default()
+            .id_salt("emacs_dialog_resize")
+            // 官方 Window 同款配置：Resize 默认 with_stroke=true 会在内容外再画一圈描边，
+            // 叠在 Modal popup 边框内侧形成「双圈」；关掉后弹窗只剩 popup 边框一条轮廓。
+            .with_stroke(false)
+            .resizable(true)
+            .min_size(egui::vec2(min_w, min_h))
+            .default_size(egui::vec2(900.0_f32.min(max_w), 500.0_f32.min(max_h)))
+            .max_size(egui::vec2(max_w, max_h))
+            .show(ui, |ui| {
+                let dialog_w = ui.available_width();
+                self.ui_emacs_body(ui, dialog_w)
+            })
+    }
+
+    /// 渲染 Emacs 弹窗主体（标题/说明/表格/确认）。`dialog_w` 为外层 Resize 提供的当前
+    /// 可调宽度，用于说明换行与表格定宽；弹窗水平垂直居中由外层 Modal 保证。
+    fn ui_emacs_body(&mut self, ui: &mut egui::Ui, dialog_w: f32) -> bool {
+        ui.set_max_width(dialog_w);
         let mut close = false;
-        // 标题栏与其它弹窗一致：标题 + 右上角关闭。
-        ui.horizontal(|ui| {
-            ui.heading(T.emacs_title);
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui
-                    .add(egui::Button::new("✖").frame(false))
-                    .on_hover_text(T.btn_close)
-                    .clicked()
-                {
-                    close = true;
-                }
+        // 头部面板：标题 + 右上角关闭 + 说明。说明在面板定宽内自动换行（Modal 的 Area
+        // available 原本无界，长段落若不限宽会把弹窗撑到超窗宽；面板/Resize 已把宽锁为 dialog_w）。
+        egui::TopBottomPanel::top("emacs_header")
+            .frame(egui::Frame::NONE)
+            .show_inside(ui, |ui| {
+                ui.horizontal(|ui| {
+                    ui.heading(T.emacs_title);
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if title_close_button(ui) {
+                            close = true;
+                        }
+                    });
+                });
+                ui.separator();
+                ui.add_space(2.0);
+                ui.add(egui::Label::new(T.emacs_intro).wrap());
+                ui.add_space(4.0);
             });
-        });
-        ui.separator();
-        ui.add_space(4.0);
-        // 说明文字必须在 modal_w 内换行：Modal 的 Area 不会执行 ui.set_max_width，available
-        // 是无界的，长段落若不限宽会把整个弹窗撑到 ~1238px（超出窗口）。用 scope_builder 的
-        // max_rect 把说明区硬限到 modal_w，令其按弹窗宽度换行，弹窗宽度始终等于 modal_w。
-        let intro = egui::Rect::from_min_size(
-            ui.available_rect_before_wrap().min,
-            egui::vec2(modal_w, 120.0),
-        );
-        ui.scope_builder(egui::UiBuilder::new().max_rect(intro), |ui| {
-            ui.label(T.emacs_intro);
-        });
-        ui.add_space(6.0);
 
         let count = self.emacs_conflict_count();
         if count == 0 {
-            ui.add_space(6.0);
-            ui.label(RichText::new(T.emacs_none).italics());
-            ui.add_space(10.0);
-            ui.horizontal(|ui| {
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    let ok = egui::Button::new(RichText::new(T.ok).strong());
-                    if ui.add(ok).clicked() {
-                        close = true;
-                    }
+            // 底部「确定」沉底 + 中央提示。
+            egui::TopBottomPanel::bottom("emacs_empty_footer")
+                .frame(egui::Frame::NONE)
+                .resizable(false)
+                .exact_height(40.0)
+                .show_inside(ui, |ui| {
+                    ui.horizontal(|ui| {
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            let ok = egui::Button::new(RichText::new(T.ok).strong());
+                            if ui.add(ok).clicked() {
+                                close = true;
+                            }
+                        });
+                    });
                 });
-            });
+            egui::CentralPanel::default()
+                .frame(egui::Frame::NONE)
+                .show_inside(ui, |ui| {
+                    ui.add_space(6.0);
+                    ui.label(RichText::new(T.emacs_none).italics());
+                });
             return close;
         }
 
         let pal = palette(ui.visuals().dark_mode);
         // 可编辑草稿副本：循环里改局部，结束后统一写回 `self.emacs_draft`。
-        let mut draft = self.emacs_draft.clone().unwrap_or_else(EmacsDraft::defaults);
+        let mut draft = self
+            .emacs_draft
+            .clone()
+            .unwrap_or_else(EmacsDraft::defaults);
 
-        // 用固定列宽的 egui_extras::Table（Column::exact）而非 Grid：Grid 的 add_sized 并不
-        // 锁定列宽（实测 5 列被内容撑到 ~1280px，把“修改后/复位”挤出 995px 窗口右缘）；Table
-        // 的 header 与 body 共用同一组 Column 定义 ⇒ 标题与内容逐列天然对齐，列宽锁定后整表
-        // 受 Modal 定宽约束，可靠落在视口内。
+        // 列宽策略：前 6 个内容列按权重比例瓜分弹窗可用宽（随窗口伸缩自动重分配，仍可拖拽
+        // 调宽）；末列「复位」用 `Column::remainder()` 吸收夹紧/取整余量，使整表=可用宽、不溢出。
+        // remainder 末列非 resizable，egui_extras 对其不画 resize 分隔线，故「末列右侧无分割线」。
         use egui_extras::{Column, TableBuilder};
-        const ROW_H: f32 = 24.0;
+        const HEADER_H: f32 = 26.0;
+        const ROW_H: f32 = 26.0; // 各行均为单行内容（含让位行：仅描述列加【让位】前缀）
 
-        // 表格放进「定宽子 Ui」：Modal 的 Area 按内容自动扩宽，available 可能远大于窗口，而
-        // remainder 列会吸满 available 把整表撑出右缘。必须用 allocate_ui_at_rect 以 max_rect
-        // 硬性约束表格可用宽（allocate_ui 的 desired_size 只是“起步宽”，内容溢出会再扩宽，
-        // 实测被 TextEdit 无限宽撑到 ~1160px 把“修改后/复位”挤出窗口）；max_rect 定了弹窗
-        // 宽度就与 modal_w 一致，描述列只吸收剩余宽度，永不越界。
-        let rect = egui::Rect::from_min_size(
-            ui.available_rect_before_wrap().min,
-            egui::vec2(modal_w, 340.0),
-        );
-        // 在 body 闭包内只写局部下标，闭包结束后统一应用，避免借用冲突。
-        let mut pending_row_edit: Option<usize> = None;
-        let mut pending_modes_edit: Option<usize> = None;
-        let mut pending_reset: Option<usize> = None;
-        ui.scope_builder(egui::UiBuilder::new().max_rect(rect), |ui| {
-            egui::ScrollArea::horizontal()
-                        .id_salt("emacs_table_hscroll")
-                        .auto_shrink([false, false])
-                        .show(ui, |ui| {
-                            ui.set_min_width(820.0);
-                            TableBuilder::new(ui)
-                                .striped(true)
-                                .cell_layout(egui::Layout::left_to_right(egui::Align::Center))
-                                // 全部列都可拖拽调整宽度；描述列不再是「仅占剩余宽的吸收列」。
-                                // 列总宽超出 modal_w 时由内层横向 ScrollArea 出滚动条，不再把
-                                // 尾部「复位」列挤出视口。
-                                .column(
-                                    Column::initial(160.0)
-                                        .resizable(true)
-                                        .range(96.0..=360.0)
-                                        .clip(true), // 操作名
-                                )
-                                .column(
-                                    Column::initial(200.0)
-                                        .resizable(true)
-                                        .range(80.0..=900.0)
-                                        .clip(true), // 描述（可拖）
-                                )
-                                .column(
-                                    Column::initial(120.0)
-                                        .resizable(true)
-                                        .range(88.0..=260.0)
-                                        .clip(true), // 修改前
-                                )
-                                .column(
-                                    Column::initial(130.0)
-                                        .resizable(true)
-                                        .range(100.0..=340.0)
-                                        .clip(true), // 生效模式
-                                )
-                                .column(
-                                    Column::initial(140.0)
-                                        .resizable(true)
-                                        .range(120.0..=340.0)
-                                        .clip(true), // 修改后
-                                )
-                                .column(
-                                    Column::initial(50.0)
-                                        .resizable(true)
-                                        .range(42.0..=140.0)
-                                        .clip(true), // 复位
-                                )
-                                .max_scroll_height(320.0)
-                                .header(ROW_H, |mut header| {
-                                    header.col(|ui| {
-                                        ui.label(RichText::new(T.emacs_col_op).strong());
-                                    });
-                                    header.col(|ui| {
-                                        ui.label(RichText::new(T.emacs_col_desc).strong());
-                                    });
-                                    header.col(|ui| {
-                                        ui.label(RichText::new(T.emacs_before).strong());
-                                    });
-                                    header.col(|ui| {
-                                        ui.label(RichText::new(T.emacs_mode_col).strong());
-                                    });
-                                    header.col(|ui| {
-                                        ui.label(RichText::new(T.emacs_after).strong());
-                                    });
-                                    header.col(|ui| {
-                                        ui.label(RichText::new(T.emacs_reset).strong());
-                                    });
-                                })
-                .body(|mut body| {
-                    for (row_i, item) in EMACS_PRESET.iter().enumerate() {
-                        // 操作名：语义行显示语义操作；释放行显示当前占用原键的操作，
-                        // 空闲时（原键本就无绑定）才显示“释放给命令行”。
-                        let op_name: std::borrow::Cow<'_, str> = match item.bind {
-                            Some(op) => std::borrow::Cow::Borrowed(op),
-                            None => match self
-                                .file
-                                .entries
-                                .iter()
-                                .find(|e| key_matches(&e.keys, item.key))
-                            {
-                                Some(e) => match &e.action {
-                                    Some(a) => std::borrow::Cow::Borrowed(a),
-                                    None => std::borrow::Cow::Borrowed(T.op_script),
-                                },
-                                None => std::borrow::Cow::Borrowed(T.emacs_free),
-                            },
-                        };
-                        // 修改前：语义行为该操作当前绑定的键；释放行为原占用键。
-                        let before = match item.bind {
-                            Some(op) => self
-                                .file
-                                .entries
-                                .iter()
-                                .find(|e| e.action.as_deref() == Some(op))
-                                .map(|e| e.keys.as_str())
-                                .unwrap_or("—")
-                                .to_string(),
-                            None => item.key.to_string(),
-                        };
-                        let is_default = draft.new_keys[row_i] == item_default_after(item);
-                        body.row(ROW_H, |mut row| {
-                            row.col(|ui| {
-                                ui.add(
-                                    egui::Label::new(
-                                        RichText::new(op_name.as_ref())
-                                            .monospace()
-                                            .color(pal.action),
-                                    )
-                                    .truncate(),
+        // 「底部」说明 + 「一键应用 / 取消」固定沉底：先声明 BottomPanel，CentralPanel 才会
+        // 取到其上方的剩余空间，两者不重叠。
+        egui::TopBottomPanel::bottom("emacs_footer")
+            .frame(egui::Frame::NONE)
+            .resizable(false)
+            .exact_height(58.0)
+            .show_inside(ui, |ui| {
+                ui.add_space(2.0);
+                ui.label(RichText::new(T.emacs_note).weak());
+                ui.add_space(4.0);
+                ui.horizontal(|ui| {
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        let apply = egui::Button::new(RichText::new(T.emacs_apply).strong());
+                        if ui.add(apply).clicked() {
+                            let applied = self.apply_emacs_preset();
+                            if applied > 0 {
+                                self.set_msg(
+                                    MsgKind::Success,
+                                    T.emacs_applied.replace("{n}", &applied.to_string()),
                                 );
-                            });
-                            row.col(|ui| {
-                                ui.add(egui::Label::new(item.desc).truncate());
-                            });
-                            row.col(|ui| {
-                                ui.label(RichText::new(before.as_str()).monospace().weak())
-                                    .on_hover_text(before.as_str());
-                            });
-                            row.col(|ui| {
-                                // 「生效模式」列：语义行显示目标条目 modes（点击打开子编辑窗）；
-                                // 释放行固定显示「不修改」并禁用（释放时只挪键、不动任何 modes）。
-                                if item.bind.is_none() {
-                                    ui.add_enabled_ui(false, |ui| {
-                                        ui.button(RichText::new(T.emacs_modes_unset).weak())
+                                close = true;
+                            }
+                        }
+                        if ui.add(egui::Button::new(T.cancel)).clicked() {
+                            close = true;
+                        }
+                    });
+                });
+                ui.add_space(2.0);
+            });
+
+        // 中间「列表区」用 CentralPanel 填满剩余可用高：弹窗被拉高时列表随之伸缩，不再固定
+        // 320 造成底部大片空白。表格可见高度取当前可用高，行多时 body 自动竖向滚动。
+        let mut pending_row_edit: Option<(usize, EmacsRowSlot, Option<usize>)> = None;
+        let mut pending_modes_edit: Option<(usize, EmacsModesSlot, Option<usize>)> = None;
+        let mut pending_reset: Option<usize> = None;
+        // 让位推演：与 apply 一致；用于「描述」列对让位行加【让位】、以及让位行默认目标键。
+        let reloc_plan = emacs_reloc_plan(&self.file.entries);
+        egui::CentralPanel::default()
+            .frame(egui::Frame::NONE)
+            .show_inside(ui, |ui| {
+                egui::ScrollArea::horizontal()
+                    .id_salt("emacs_table_hscroll")
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| {
+                        // 列宽随弹窗宽按比例分配（前 6 列按权重瓜分可用宽，「复位」列 remainder
+                        // 吸收余量并撑齐整表宽）；各列仍可拖拽调宽。egui_extras 会把拖拽结果
+                        // 持久化在 Memory，导致后续帧忽略新 initial 值——弹窗宽变化时调用
+                        // `reset()` 清掉持久化列宽，比例分配才随窗口伸缩生效（同宽下保留
+                        // 用户拖拽结果）。表格可见高度取当前可用高：弹窗拉高时列表随之伸缩。
+                        let avail_h = ui.available_height().max(0.0);
+                        let spacing_x = ui.spacing().item_spacing.x;
+                        // 与 egui_extras `TableBuilder::available_width` 同口径（扣竖向滚动条
+                        // 预留宽），保证内容列比例和 ≤ 表格实际可用宽，余量归末列 remainder。
+                        let avail_w =
+                            (ui.available_width() - ui.spacing().scroll.allocated_width()).max(0.0);
+                        let widths = emacs_col_widths(avail_w, spacing_x);
+                        let width_changed =
+                            self.emacs_tbl_w.is_some_and(|w| (w - avail_w).abs() > 0.5);
+                        self.emacs_tbl_w = Some(avail_w);
+                        let col = |i: usize| {
+                            Column::initial(widths[i])
+                                .resizable(true)
+                                .clip(true)
+                                .range(EMACS_COL_MINS[i]..=EMACS_COL_WEIGHTS[i] * 5.0)
+                        };
+                        let builder = TableBuilder::new(ui)
+                            // 不用内置斑马（隔行交替色与「让位/语义」分组无关，还会被插入
+                            // 的让位行打乱节奏）：语义行统一中性底、让位行统一淡橙底，
+                            // 两类行在 cell 闭包开头手动铺色（见 paint_cell_row_bg）。
+                            .striped(false)
+                            .cell_layout(egui::Layout::left_to_right(egui::Align::Center))
+                            .column(col(0)) // 操作名
+                            .column(col(1)) // 描述（可含【让位】前缀）
+                            .column(col(2)) // 生效模式
+                            .column(col(3)) // 快捷键
+                            .column(col(4)) // 修改后生效模式
+                            .column(col(5)) // 修改后快捷键
+                            .column(Column::remainder().clip(true)) // 复位：吸收剩余宽，末列不画分割线
+                            .max_scroll_height(avail_h);
+                        if width_changed {
+                            builder.reset();
+                        }
+                        builder
+                            .header(HEADER_H, |mut header| {
+                                header.col(|ui| {
+                                    ui.label(RichText::new(T.emacs_col_op).strong());
+                                });
+                                header.col(|ui| {
+                                    ui.label(RichText::new(T.emacs_col_desc).strong());
+                                });
+                                header.col(|ui| {
+                                    ui.label(RichText::new(T.emacs_mode_col).strong());
+                                });
+                                header.col(|ui| {
+                                    ui.label(RichText::new(T.emacs_key_col).strong());
+                                });
+                                header.col(|ui| {
+                                    ui.label(RichText::new(T.emacs_after_mode_col).strong());
+                                });
+                                header.col(|ui| {
+                                    ui.label(RichText::new(T.emacs_after_key_col).strong());
+                                });
+                                header.col(|ui| {
+                                    ui.label(RichText::new(T.emacs_reset).strong());
+                                });
+                            })
+                            .body(|mut body| {
+                                for (row_i, item) in EMACS_PRESET.iter().enumerate() {
+                                    // 让位行：该 Emacs 键被其它操作占用（可能多个），各占用者将逐一移位到安全替代键。
+                                    let reloc = &reloc_plan[row_i];
+                                    // 操作名：语义操作名。
+                                    let op_name = item.bind;
+                                    // 当前所在键与当前生效模式：语义操作所在条目。
+                                    let before = emacs_before_text(&self.file.entries, item);
+                                    let cur_modes = emacs_before_modes(&self.file.entries, item);
+                                    let is_default =
+                                        draft.new_keys[row_i] == item_default_after(item);
+                                    body.row(ROW_H, |mut row| {
+                                        // 语义行统一中性底色（与让位行的淡橙底区分）。
+                                        // 操作名
+                                        row.col(|ui| {
+                                            paint_cell_row_bg(ui, pal.semantic_bg);
+                                            ui.add(
+                                                egui::Label::new(
+                                                    RichText::new(op_name)
+                                                        .monospace()
+                                                        .color(pal.action),
+                                                )
+                                                .truncate(),
+                                            );
+                                        });
+                                        // 描述：显示本行描述；让位信息由紧随其后的
+                                        // 独立「让位行」专门列出，不在本行（如 Text.MoveToLineHome）标注。
+                                        row.col(|ui| {
+                                            paint_cell_row_bg(ui, pal.semantic_bg);
+                                            ui.add(egui::Label::new(item.desc).truncate());
+                                        });
+                                        // 生效模式（当前）：始终显示完整值，不写「不修改」，字号不缩小。
+                                        row.col(|ui| {
+                                            paint_cell_row_bg(ui, pal.semantic_bg);
+                                            let m = if cur_modes.trim().is_empty() {
+                                                T.modes_empty
+                                            } else {
+                                                cur_modes.as_str()
+                                            };
+                                            ui.label(m);
+                                        });
+                                        // 快捷键（当前所在键）
+                                        row.col(|ui| {
+                                            paint_cell_row_bg(ui, pal.semantic_bg);
+                                            ui.add(
+                                                egui::Label::new(
+                                                    RichText::new(before.as_str()).monospace(),
+                                                )
+                                                .truncate(),
+                                            );
+                                        });
+                                        // 修改后生效模式：可点开子编辑窗（默认=旧 modes+remote）。
+                                        row.col(|ui| {
+                                            paint_cell_row_bg(ui, pal.semantic_bg);
+                                            let shown = draft
+                                                .new_modes
+                                                .get(row_i)
+                                                .and_then(|m| m.as_ref())
+                                                .cloned()
+                                                .unwrap_or_else(|| {
+                                                    emacs_after_modes_default(
+                                                        &self.file.entries,
+                                                        row_i,
+                                                    )
+                                                });
+                                            let display = if shown.trim().is_empty() {
+                                                T.modes_empty
+                                            } else {
+                                                shown.as_str()
+                                            };
+                                            if ui
+                                                .button(RichText::new(display).monospace())
+                                                .clicked()
+                                            {
+                                                pending_modes_edit =
+                                                    Some((row_i, EmacsModesSlot::Binding, None));
+                                            }
+                                        });
+                                        // 修改后快捷键：点击打开子编辑窗，复用主窗口快捷键录制控件
+                                        row.col(|ui| {
+                                            paint_cell_row_bg(ui, pal.semantic_bg);
+                                            let cur = draft.new_keys[row_i].as_str();
+                                            let shown =
+                                                if cur.is_empty() { T.emacs_unset } else { cur };
+                                            if ui.button(RichText::new(shown).monospace()).clicked()
+                                            {
+                                                pending_row_edit =
+                                                    Some((row_i, EmacsRowSlot::AfterKey, None));
+                                            }
+                                        });
+                                        // 复位
+                                        row.col(|ui| {
+                                            paint_cell_row_bg(ui, pal.semantic_bg);
+                                            if ui
+                                                .add_enabled_ui(!is_default, |ui| {
+                                                    ui.button(T.emacs_reset)
+                                                })
+                                                .inner
+                                                .clicked()
+                                            {
+                                                pending_reset = Some(row_i);
+                                            }
+                                        });
                                     });
-                                } else {
-                                    let op = item.bind.unwrap();
-                                    let cur = self
-                                        .file
-                                        .entries
-                                        .iter()
-                                        .find(|e| e.action.as_deref() == Some(op))
-                                        .map(|e| e.modes.clone())
-                                        .unwrap_or_default();
-                                    // 编辑结果显示在草稿中；未编辑则显示目标条目当前 modes。
-                                    let shown = draft
-                                        .new_modes
-                                        .get(row_i)
-                                        .and_then(|m| m.as_ref())
-                                        .cloned()
-                                        .unwrap_or(cur);
-                                    let display = if shown.trim().is_empty() {
-                                        T.modes_empty
-                                    } else {
-                                        shown.as_str()
-                                    };
-                                    if ui
-                                        .button(RichText::new(display).monospace())
-                                        .on_hover_text(T.emacs_mode_tip)
-                                        .clicked()
-                                    {
-                                        pending_modes_edit = Some(row_i);
+
+                                    // —— 独立「让位行」—— 该 Emacs 键被其它操作占用时，每个原占用者
+                                    // 都需让位到安全键：分别单独一行列出，展示占用者操作与
+                                    // 「现键 → 移位目标」，且描述列都标注【让位】。
+                                    for (reloc_i, rp) in reloc.iter().enumerate() {
+                                        let occ = &self.file.entries[rp.idx];
+                                        let occ_op: std::borrow::Cow<'_, str> = match &occ.action {
+                                            Some(a) => std::borrow::Cow::Borrowed(a),
+                                            None => std::borrow::Cow::Borrowed(T.op_script),
+                                        };
+                                        let occ_modes = occ.modes.as_str();
+                                        // 描述列显示该占用者命令的功能描述（未知动作回退原名）。
+                                        let occ_desc: std::borrow::Cow<'_, str> = match &occ.action
+                                        {
+                                            Some(a) => {
+                                                std::borrow::Cow::Borrowed(action_description(a))
+                                            }
+                                            None => std::borrow::Cow::Borrowed(T.op_script),
+                                        };
+                                        body.row(ROW_H, |mut row| {
+                                            // 让位行统一淡橙底色（与语义行的中性底区分）。
+                                            // 操作名：原占用者操作
+                                            row.col(|ui| {
+                                                paint_cell_row_bg(ui, pal.reloc_bg);
+                                                ui.add(
+                                                    egui::Label::new(
+                                                        RichText::new(occ_op.as_ref())
+                                                            .monospace()
+                                                            .color(pal.action),
+                                                    )
+                                                    .truncate(),
+                                                );
+                                            });
+                                            // 描述：【让位】+ 命令的功能描述
+                                            row.col(|ui| {
+                                                paint_cell_row_bg(ui, pal.reloc_bg);
+                                                ui.horizontal(|ui| {
+                                                    ui.label(
+                                                        RichText::new(T.emacs_reloc_label)
+                                                            .color(pal.script)
+                                                            .strong(),
+                                                    );
+                                                    ui.label(occ_desc.as_ref());
+                                                });
+                                            });
+                                            // 生效模式（当前）：占用者当前 modes（字号不缩小）
+                                            row.col(|ui| {
+                                                paint_cell_row_bg(ui, pal.reloc_bg);
+                                                let m = if occ_modes.trim().is_empty() {
+                                                    T.modes_empty
+                                                } else {
+                                                    occ_modes
+                                                };
+                                                ui.label(m);
+                                            });
+                                            // 快捷键（当前占用键 = 被让出的 Emacs 键）
+                                            row.col(|ui| {
+                                                paint_cell_row_bg(ui, pal.reloc_bg);
+                                                ui.add(
+                                                    egui::Label::new(
+                                                        RichText::new(&occ.keys).monospace(),
+                                                    )
+                                                    .truncate(),
+                                                );
+                                            });
+                                            // 修改后生效模式：可编辑占用者的生效模式（Reloc 槽），
+                                            // 移位时应用其值；未编辑则保持占用者原模式。
+                                            row.col(|ui| {
+                                                paint_cell_row_bg(ui, pal.reloc_bg);
+                                                let shown = draft
+                                                    .reloc_modes
+                                                    .get(row_i)
+                                                    .and_then(|m| m.as_ref())
+                                                    .cloned()
+                                                    .unwrap_or_else(|| occ_modes.to_owned());
+                                                let display = if shown.trim().is_empty() {
+                                                    T.modes_empty
+                                                } else {
+                                                    shown.as_str()
+                                                };
+                                                if ui
+                                                    .button(RichText::new(display).monospace())
+                                                    .clicked()
+                                                {
+                                                    pending_modes_edit = Some((
+                                                        row_i,
+                                                        EmacsModesSlot::Reloc,
+                                                        Some(reloc_i),
+                                                    ));
+                                                }
+                                            });
+                                            // 修改后快捷键：可点开子编辑窗改写让位目标（默认=自动推演 dst）
+                                            row.col(|ui| {
+                                                paint_cell_row_bg(ui, pal.reloc_bg);
+                                                let custom = draft
+                                                    .reloc
+                                                    .get(row_i)
+                                                    .map(String::as_str)
+                                                    .unwrap_or("");
+                                                let shown = if custom.is_empty() {
+                                                    rp.dst.as_str()
+                                                } else {
+                                                    custom
+                                                };
+                                                if ui
+                                                    .button(RichText::new(shown).monospace())
+                                                    .clicked()
+                                                {
+                                                    pending_row_edit = Some((
+                                                        row_i,
+                                                        EmacsRowSlot::RelocKey,
+                                                        Some(reloc_i),
+                                                    ));
+                                                }
+                                            });
+                                            // 复位：让位目标自动推演，无需复位，禁用
+                                            row.col(|ui| {
+                                                paint_cell_row_bg(ui, pal.reloc_bg);
+                                                ui.add_enabled_ui(false, |ui| {
+                                                    // 让位目标默认由 apply 自动推演，复位按钮仅作占位。
+                                                    let _ = ui.button(T.emacs_reset);
+                                                });
+                                            });
+                                        });
                                     }
                                 }
                             });
-                            row.col(|ui| {
-                                // 「修改后」列：点击打开子编辑窗，复用主窗口快捷键录制控件。
-                                let cur = draft.new_keys[row_i].as_str();
-                                let shown = if cur.is_empty() { T.emacs_unset } else { cur };
-                                if ui
-                                    .button(RichText::new(shown).monospace())
-                                    .on_hover_text(T.emacs_after_tip)
-                                    .clicked()
-                                {
-                                    pending_row_edit = Some(row_i);
-                                }
-                            });
-                            row.col(|ui| {
-                                if ui
-                                    .add_enabled_ui(!is_default, |ui| {
-                                        ui.button(T.emacs_reset).on_hover_text(T.emacs_reset_tip)
-                                    })
-                                    .inner
-                                    .clicked()
-                                {
-                                    pending_reset = Some(row_i);
-                                }
-                            });
-                        });
-                    }
-                });
-        });
-        });
+                    });
+            });
 
-        // 闭包结束后统一应用：复位直接改草稿；打开子编辑窗则初始化 EmacsRowEdit。
+        // 闭包结束后统一应用：复位直接改草稿；打开子编辑窗则初始化 EmacsRowEdit（按 slot
+        // 区分「修改后」与「让位目标」，让位目标未自定义时预填自动推演的移位目标）。
         if let Some(r) = pending_reset {
             draft.reset(r);
         }
-        if let Some(r) = pending_row_edit {
-            let keys = draft.new_keys.get(r).cloned().unwrap_or_default();
+        if let Some((r, slot, reloc_i)) = pending_row_edit {
+            let keys = match slot {
+                EmacsRowSlot::AfterKey => draft.new_keys.get(r).cloned().unwrap_or_default(),
+                // 让位目标默认取该行对应让位占用者（reloc_i）的自动推演目标。
+                EmacsRowSlot::RelocKey => draft.reloc.get(r).cloned().unwrap_or_else(|| {
+                    reloc_plan
+                        .get(r)
+                        .and_then(|plans| plans.get(reloc_i.unwrap_or(0)))
+                        .map(|p| p.dst.clone())
+                        .unwrap_or_default()
+                }),
+            };
             self.emacs_row_edit = Some(EmacsRowEdit {
                 row: r,
+                slot,
                 keys,
                 recording: false,
                 mode: RecordMode::Replace,
             });
         }
-        if let Some(r) = pending_modes_edit {
-            // 打开「生效模式」子编辑窗，预填该行目标条目当前 modes（已编辑过则用草稿值）。
-            let cur = EMACS_PRESET[r]
-                .bind
-                .and_then(|op| {
-                    self.file
-                        .entries
-                        .iter()
-                        .find(|e| e.action.as_deref() == Some(op))
-                        .map(|e| e.modes.clone())
-                })
-                .unwrap_or_default();
-            let cur = draft.new_modes.get(r).and_then(|m| m.clone()).unwrap_or(cur);
-            self.emacs_modes_edit = Some(EmacsModesEdit { row: r, modes: cur });
+        if let Some((r, slot, reloc_i)) = pending_modes_edit {
+            // 打开「生效模式」子编辑窗：预填内容按槽位决定——Binding 预填该行语义目标
+            // 条目新生效模式（默认 = 旧 modes + remote，已编辑则用草稿值），Reloc 预填
+            // 该行对应让位占用者的生效模式（已编辑则用占用者草稿值）。
+            let cur = match slot {
+                EmacsModesSlot::Binding => draft
+                    .new_modes
+                    .get(r)
+                    .and_then(|m| m.clone())
+                    .unwrap_or_else(|| emacs_after_modes_default(&self.file.entries, r)),
+                EmacsModesSlot::Reloc => draft
+                    .reloc_modes
+                    .get(r)
+                    .and_then(|m| m.clone())
+                    .unwrap_or_else(|| {
+                        reloc_plan
+                            .get(r)
+                            .and_then(|plans| plans.get(reloc_i.unwrap_or(0)))
+                            .map(|p| self.file.entries[p.idx].modes.clone())
+                            .unwrap_or_default()
+                    }),
+            };
+            self.emacs_modes_edit = Some(EmacsModesEdit {
+                row: r,
+                slot,
+                modes: cur,
+            });
         }
 
         self.emacs_draft = Some(draft);
-        ui.add_space(4.0);
-        ui.label(RichText::new(T.emacs_note).weak());
-        ui.add_space(10.0);
-        ui.horizontal(|ui| {
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                let apply = egui::Button::new(RichText::new(T.emacs_apply).strong());
-                if ui.add(apply).clicked() {
-                    let applied = self.apply_emacs_preset();
-                    if applied > 0 {
-                        self.set_msg(
-                            MsgKind::Success,
-                            T.emacs_applied.replace("{n}", &applied.to_string()),
-                        );
-                        close = true;
-                    }
-                }
-                if ui.add(egui::Button::new(T.cancel)).clicked() {
-                    close = true;
-                }
-            });
-        });
-        ui.add_space(6.0);
         close
     }
 
-    /// 「一键 Emacs」弹窗中「修改后」列的子编辑窗。
+    /// 「一键 Emacs」弹窗中「修改后」列与「让位行」目标键的子编辑窗。
     ///
     /// 复用主窗口快捷键设置的录制控件 `ui_shortcut_recorder`（同一套录制/追加/校验交互）。
-    /// 「确定」把编辑结果写回本行草稿；「取消」/× /点遮罩则丢弃。
+    /// 「确定」把编辑结果按 `d.slot` 写回本行草稿（`AfterKey`→new_keys / `RelocKey`→reloc）；
+    /// 「取消」/× /点遮罩则丢弃。
     fn ui_emacs_row_edit(&mut self, ui: &mut egui::Ui, d: &mut EmacsRowEdit, close: &mut bool) {
         ui.set_min_width(460.0);
-        // 标题 + 右上角关闭按钮（与其它弹窗一致）。
+        // 标题 + 右上角关闭按钮（与其它弹窗一致）。「修改后」与「让位目标」用各自标题。
         ui.horizontal(|ui| {
-            ui.heading(T.emacs_after_edit_title);
+            ui.heading(match d.slot {
+                EmacsRowSlot::AfterKey => T.emacs_after_edit_title,
+                EmacsRowSlot::RelocKey => T.emacs_reloc_edit_title,
+            });
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui
-                    .add(egui::Button::new("✖").frame(false))
-                    .on_hover_text(T.btn_close)
-                    .clicked()
-                {
+                if title_close_button(ui) {
                     *close = true;
                 }
             });
@@ -1909,9 +2387,20 @@ impl EditorApp {
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 let ok = egui::Button::new(RichText::new(T.ok).strong());
                 if ui.add(ok).clicked() {
-                    // 写回本行草稿（行对齐由调用方保证，此处按需截断越界）。
-                    if let Some(keys) = self.emacs_draft.as_mut().and_then(|e| e.new_keys.get_mut(d.row)) {
-                        *keys = d.keys.clone();
+                    // 按 slot 写回本行草稿（行对齐由调用方保证，此处按需截断越界）。
+                    if let Some(ed) = self.emacs_draft.as_mut() {
+                        match d.slot {
+                            EmacsRowSlot::AfterKey => {
+                                if let Some(slot) = ed.new_keys.get_mut(d.row) {
+                                    *slot = d.keys.clone();
+                                }
+                            }
+                            EmacsRowSlot::RelocKey => {
+                                if let Some(slot) = ed.reloc.get_mut(d.row) {
+                                    *slot = d.keys.clone();
+                                }
+                            }
+                        }
                     }
                     *close = true;
                 }
@@ -1931,27 +2420,47 @@ impl EditorApp {
         ui.horizontal(|ui| {
             ui.heading(T.emacs_modes_edit_title);
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui
-                    .add(egui::Button::new("✖").frame(false))
-                    .on_hover_text(T.btn_close)
-                    .clicked()
-                {
+                if title_close_button(ui) {
                     *close = true;
                 }
             });
         });
         ui.add_space(4.0);
         self.ui_modes_editor(ui, &mut m.modes);
-        // 提示该行编辑作用于哪个语义操作。
-        if let Some(op) = EMACS_PRESET.get(m.row).and_then(|it| it.bind) {
-            ui.add_space(6.0);
-            ui.label(RichText::new(T.ed_modes_hint).weak().small());
-            ui.add_space(4.0);
-            ui.label(
-                RichText::new(format!("{}  {op}", T.emacs_mode_target))
-                    .monospace()
-                    .strong(),
-            );
+        // 提示该行编辑作用于哪个条目：Binding=语义操作目标；Reloc=被移位的占用者。
+        match m.slot {
+            EmacsModesSlot::Binding => {
+                if let Some(it) = EMACS_PRESET.get(m.row) {
+                    let op = it.bind;
+                    ui.add_space(6.0);
+                    ui.label(RichText::new(T.ed_modes_hint).weak().small());
+                    ui.add_space(4.0);
+                    ui.label(
+                        RichText::new(format!("{}  {op}", T.emacs_mode_target))
+                            .monospace()
+                            .strong(),
+                    );
+                }
+            }
+            EmacsModesSlot::Reloc => {
+                if let Some(p) = emacs_reloc_plan(&self.file.entries)
+                    .get(m.row)
+                    .and_then(|plans| plans.first())
+                {
+                    let occ_op: std::borrow::Cow<'_, str> = match &self.file.entries[p.idx].action {
+                        Some(a) => std::borrow::Cow::Borrowed(a),
+                        None => std::borrow::Cow::Borrowed(T.op_script),
+                    };
+                    ui.add_space(6.0);
+                    ui.label(RichText::new(T.ed_modes_hint).weak().small());
+                    ui.add_space(4.0);
+                    ui.label(
+                        RichText::new(format!("{}  {occ_op}", T.emacs_mode_reloc_target))
+                            .monospace()
+                            .strong(),
+                    );
+                }
+            }
         }
         ui.add_space(8.0);
         ui.horizontal(|ui| {
@@ -1962,12 +2471,19 @@ impl EditorApp {
                         .color(palette(ui.visuals().dark_mode).ok),
                 );
                 if ui.add(ok).clicked() {
-                    if let Some(slot) = self
-                        .emacs_draft
-                        .as_mut()
-                        .and_then(|e| e.new_modes.get_mut(m.row))
-                    {
-                        *slot = Some(m.modes.clone());
+                    if let Some(d) = self.emacs_draft.as_mut() {
+                        match m.slot {
+                            EmacsModesSlot::Binding => {
+                                if let Some(slot) = d.new_modes.get_mut(m.row) {
+                                    *slot = Some(m.modes.clone());
+                                }
+                            }
+                            EmacsModesSlot::Reloc => {
+                                if let Some(slot) = d.reloc_modes.get_mut(m.row) {
+                                    *slot = Some(m.modes.clone());
+                                }
+                            }
+                        }
                     }
                     *close = true;
                 }
@@ -1987,11 +2503,7 @@ impl EditorApp {
         ui.horizontal(|ui| {
             ui.heading(T.restore_title);
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui
-                    .add(egui::Button::new("✖").frame(false))
-                    .on_hover_text(T.btn_close)
-                    .clicked()
-                {
+                if title_close_button(ui) {
                     *close = true;
                 }
             });
@@ -2027,10 +2539,7 @@ impl EditorApp {
                             .map(|s| s.to_string_lossy().into_owned())
                             .unwrap_or_default();
                         ui.horizontal(|ui| {
-                            if ui
-                                .selectable_label(confirm_idx == Some(i), &name)
-                                .clicked()
-                            {
+                            if ui.selectable_label(confirm_idx == Some(i), &name).clicked() {
                                 clicked_select = Some(i);
                             }
                             if ui
@@ -2057,9 +2566,10 @@ impl EditorApp {
         }
 
         // 选中某备份后，底部出现恢复确认区。
-        let selected = self.backup_ui.as_ref().and_then(|b| {
-            b.confirm_restore.and_then(|i| b.list.get(i).cloned())
-        });
+        let selected = self
+            .backup_ui
+            .as_ref()
+            .and_then(|b| b.confirm_restore.and_then(|i| b.list.get(i).cloned()));
         if let Some(path) = selected {
             ui.add_space(8.0);
             ui.separator();
@@ -2069,7 +2579,9 @@ impl EditorApp {
             ui.horizontal(|ui| {
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if ui
-                        .add(egui::Button::new(RichText::new(T.restore_confirm_ok).strong()))
+                        .add(egui::Button::new(
+                            RichText::new(T.restore_confirm_ok).strong(),
+                        ))
                         .clicked()
                     {
                         self.do_restore_backup(&path);
@@ -2627,7 +3139,10 @@ mod tests {
             clipboard_event_shortcut(&egui::Event::Copy),
             Some(ks(Key::C))
         );
-        assert_eq!(clipboard_event_shortcut(&egui::Event::Cut), Some(ks(Key::X)));
+        assert_eq!(
+            clipboard_event_shortcut(&egui::Event::Cut),
+            Some(ks(Key::X))
+        );
         assert_eq!(
             clipboard_event_shortcut(&egui::Event::Paste("abc".into())),
             Some(ks(Key::V))
@@ -2701,6 +3216,209 @@ mod tests {
             script: None,
             extra: Default::default(),
         }
+    }
+
+    fn ent_modes(keys: &str, action: Option<&str>, modes: &str) -> crate::model::KeymapEntry {
+        crate::model::KeymapEntry {
+            modes: modes.into(),
+            ..ent(keys, action)
+        }
+    }
+
+    #[test]
+    fn emacs_col_widths_distribute_proportionally() {
+        // 列宽随弹窗可用宽按权重比例瓜分：内容和恰好用尽「可用宽 − 复位列 − 列间距」。
+        let s = 5.0;
+        let avail = 872.0; // 弹窗默认宽 900 附近的典型可用宽
+        let w = emacs_col_widths(avail, s);
+        let content = avail - EMACS_RESET_W - s * 6.0;
+        let sum: f32 = w.iter().sum();
+        assert!(
+            (sum - content).abs() < 0.01,
+            "内容列应恰好瓜分内容宽，实际 {sum} != {content}"
+        );
+        let weight_sum: f32 = EMACS_COL_WEIGHTS.iter().sum();
+        for i in 0..6 {
+            let expect = EMACS_COL_WEIGHTS[i] / weight_sum * content;
+            assert!((w[i] - expect).abs() < 0.01, "第 {i} 列应按权重比例分配");
+        }
+
+        // 可用宽伸缩时同比例伸缩（未触及夹紧区间）。
+        let w_narrow = emacs_col_widths(596.0, s); // 内容宽恰为权重和 520
+        let wide_avail = 1116.0 + EMACS_RESET_W + s * 6.0; // 内容宽 1116 = 520×2.146
+        let w_wide = emacs_col_widths(wide_avail, s);
+        for i in 0..6 {
+            let ratio = w_wide[i] / w_narrow[i];
+            assert!(
+                (ratio - 1116.0 / 520.0).abs() < 1e-3,
+                "第 {i} 列应同比例伸缩"
+            );
+        }
+
+        // 极窄：各列夹紧到最小宽（整表溢出由外层横向滚动兜底）。
+        assert_eq!(emacs_col_widths(0.0, s), EMACS_COL_MINS);
+        // 极宽：各列封顶 5×权重，余量归末列 remainder（复位列）。
+        let w_max = emacs_col_widths(100_000.0, s);
+        for i in 0..6 {
+            assert!(
+                (w_max[i] - EMACS_COL_WEIGHTS[i] * 5.0).abs() < 1e-4,
+                "第 {i} 列应封顶 5×权重"
+            );
+        }
+    }
+
+    #[test]
+    fn emacs_preset_shared_key_occupiers_move_together() {
+        // 用户诉求：原先共享同一快捷键的多个操作（如 Editor.Save 与 Text.Save 同在
+        // <Ctrl+S>）让位时应整体移到同一新键，保持共享关系，而不是被拆散到两个键。
+        let mut a = app_with(vec![
+            ent("<Ctrl+A>", Some("Editor.SelectAll")),
+            ent("<Ctrl+A>", Some("Session.SelectAll")),
+            ent("<Home>", Some("Text.MoveToLineHome")),
+        ]);
+        // 弹窗推演计划：两个让位行指向同一目标键。
+        let plan = emacs_reloc_plan(&a.file.entries);
+        let ctrl_a_row = EMACS_PRESET
+            .iter()
+            .position(|it| it.key == "<Ctrl+A>")
+            .unwrap();
+        let dsts: Vec<&str> = plan[ctrl_a_row].iter().map(|p| p.dst.as_str()).collect();
+        assert_eq!(dsts.len(), 2, "两个占用者各占一行让位行");
+        assert_eq!(dsts[0], dsts[1], "共享原键的让位行应指向同一目标键");
+
+        let n = a.apply_emacs_preset();
+        assert_eq!(n, 3, "两个共享占用者移位 + 语义操作改绑");
+        assert_eq!(
+            a.file.entries[0].keys, a.file.entries[1].keys,
+            "应用后两个占用者应在同一新键上"
+        );
+        assert_ne!(a.file.entries[0].keys, "<Ctrl+A>", "原键应被释放");
+        assert_eq!(a.file.entries[2].keys, "<Ctrl+A>", "语义操作应绑上 Ctrl+A");
+        assert_eq!(a.emacs_conflict_count(), 0);
+        assert!(a.dirty);
+
+        // 二次应用幂等：共享键已整体让位，不再有任何改动。
+        let raw1 = a.raw.clone();
+        assert_eq!(a.apply_emacs_preset(), 0);
+        assert_eq!(a.raw, raw1);
+    }
+
+    #[test]
+    fn emacs_preset_semantic_row_shared_occupiers_move_together() {
+        // 语义行目标键上的共享占用者同样整体移位：两个不同操作同在 <Alt+B>，一起让位到
+        // Alt+Shift+B，随后语义操作 Text.MoveToPreviousWordStart 绑上 Alt+B。
+        let mut a = app_with(vec![
+            ent("<Alt+B>", Some("Window.ShowPaletteMultiplexer")),
+            ent("<Alt+B>", Some("Session.SplitPane")),
+            ent("<Ctrl+Left>", Some("Text.MoveToPreviousWordStart")),
+        ]);
+        assert_eq!(a.emacs_conflict_count(), 2);
+        let n = a.apply_emacs_preset();
+        assert_eq!(n, 3);
+        assert_eq!(
+            a.file.entries[0].keys, a.file.entries[1].keys,
+            "共享 Alt+B 的两个占用者应移到同一新键"
+        );
+        assert_eq!(a.file.entries[0].keys, "<Alt+Shift+B>");
+        assert_eq!(a.file.entries[2].keys, "<Alt+B>", "语义操作应绑上 Alt+B");
+        assert_eq!(a.emacs_conflict_count(), 0);
+
+        // 前缀形与裸形混合的共享者（WindTerm 靠两种形态区分场景）也一起移位，
+        // 且各自保留原形态。
+        let mut a = app_with(vec![
+            ent("[<Ctrl+A>]", Some("Window.CloseActiveView")),
+            ent("<Ctrl+A>", Some("Session.ZoomIn")),
+            ent("<Home>", Some("Text.MoveToLineHome")),
+        ]);
+        let n = a.apply_emacs_preset();
+        assert_eq!(n, 3);
+        assert_eq!(a.file.entries[0].keys, "[<Ctrl+Shift+A>]", "前缀形保留");
+        assert_eq!(a.file.entries[1].keys, "<Ctrl+Shift+A>", "裸形保留");
+        assert_eq!(a.file.entries[2].keys, "<Ctrl+A>", "语义操作应绑上 Ctrl+A");
+        assert_eq!(a.emacs_conflict_count(), 0);
+    }
+
+    #[test]
+    fn emacs_preset_reapply_is_idempotent_and_no_duplicate() {
+        // 用户诉求：一键应用后再次应用（或对「语义操作已绑在 Emacs 键上」的配置应用）不得
+        // 把同名操作的其它条目也挪到目标键，在目标键上产生重复绑定。
+        let mut a = app_with(vec![
+            // 第一轮应用后的状态：MoveToPreviousChar 已在 Ctrl+B 且 modes 已含 remote。
+            ent_modes(
+                "<Ctrl+B>",
+                Some("Text.MoveToPreviousChar"),
+                "normal, remote",
+            ),
+            // 同名操作的另一条目（不同快捷键），必须保持原键原模式不动。
+            ent("<Left>", Some("Text.MoveToPreviousChar")),
+        ]);
+        let n = a.apply_emacs_preset();
+        assert_eq!(n, 0, "目标已达成时应为幂等，无任何实际改动，实际 {n}");
+        assert_eq!(a.file.entries[1].keys, "<Left>", "同名另一条目不得被改绑");
+        assert_eq!(a.file.entries[1].modes, "normal");
+        assert_eq!(
+            a.file
+                .entries
+                .iter()
+                .filter(|e| key_matches(&e.keys, "<Ctrl+B>"))
+                .count(),
+            1,
+            "目标键上不得出现重复绑定"
+        );
+        assert!(!a.dirty, "幂等应用不应标记脏");
+
+        // 若已绑定条目缺 remote（如用户手动删过），按弹窗默认补齐，但键位不动。
+        let mut a = app_with(vec![
+            ent_modes("<Ctrl+B>", Some("Text.MoveToPreviousChar"), "normal"),
+            ent("<Left>", Some("Text.MoveToPreviousChar")),
+        ]);
+        let n = a.apply_emacs_preset();
+        assert_eq!(n, 1, "仅补齐 remote 一处改动");
+        assert_eq!(a.file.entries[0].keys, "<Ctrl+B>", "已绑定条目键位不动");
+        assert_eq!(a.file.entries[0].modes, "normal, remote");
+        assert_eq!(a.file.entries[1].keys, "<Left>");
+    }
+
+    #[test]
+    fn emacs_preset_same_op_multiple_keys_binds_only_one() {
+        // 用户诉求：同名操作存在多个不同快捷键条目时（真实样本中 139 例，如
+        // MoveToPreviousWordStart 同时绑 <Ctrl+Left> 与 <Meta+Left>），一键应用只改绑
+        // 一条到 Emacs 键，其余条目保持原键；「修改前」列显示的必须是实际被改绑的那条。
+        let mut a = app_with(vec![
+            ent("<Alt+B>", Some("Window.ShowPaletteMultiplexer")), // 占用者 → Alt+Shift+B
+            ent("<Ctrl+Left>", Some("Text.MoveToPreviousWordStart")), // 改绑 → Alt+B
+            ent("<Meta+Left>", Some("Text.MoveToPreviousWordStart")), // 同名另一条目，保持
+        ]);
+        let alt_b = EMACS_PRESET.iter().find(|it| it.key == "<Alt+B>").unwrap();
+        assert_eq!(
+            emacs_before_text(&a.file.entries, alt_b),
+            "<Ctrl+Left>",
+            "「修改前」应显示实际将被改绑的那条"
+        );
+        assert_eq!(emacs_before_modes(&a.file.entries, alt_b), "normal");
+        let n = a.apply_emacs_preset();
+        assert_eq!(n, 2, "占用者移位 + 语义改绑，同名另一条目不动");
+        let on_alt_b: Vec<&crate::model::KeymapEntry> = a
+            .file
+            .entries
+            .iter()
+            .filter(|e| key_matches(&e.keys, "<Alt+B>"))
+            .collect();
+        assert_eq!(on_alt_b.len(), 1, "Alt+B 上只应有一条绑定");
+        assert_eq!(
+            on_alt_b[0].action.as_deref(),
+            Some("Text.MoveToPreviousWordStart")
+        );
+        assert_eq!(on_alt_b[0].modes, "normal, remote");
+        let meta = a
+            .file
+            .entries
+            .iter()
+            .find(|e| e.keys == "<Meta+Left>")
+            .unwrap();
+        assert_eq!(meta.action.as_deref(), Some("Text.MoveToPreviousWordStart"));
+        assert_eq!(meta.modes, "normal", "同名另一条目模式不被改动");
+        assert!(a.dirty);
     }
 
     #[test]
@@ -2791,6 +3509,24 @@ mod tests {
     }
 
     #[test]
+    fn emacs_dialog_before_reveals_semantic_current_key_on_real_sample() {
+        // 语义行「修改前」列显示语义操作当前所在键：Alt+B 行（Text.MoveToPreviousWordStart）
+        // 当前绑定在 <Ctrl+Left>。原占用者（ShowPaletteMultiplexer）的让位信息按独立的
+        // 「让位行」另行展示（见 emacs 弹窗让位行实现）。
+        let p =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("samples/global/wind.keymaps");
+        let mut a = EditorApp::new();
+        a.open_path(&p);
+        assert!(a.path.is_some(), "打开失败: {:?}", a.msg);
+        let alt_b = EMACS_PRESET.iter().find(|it| it.key == "<Alt+B>").unwrap();
+        let before = emacs_before_text(&a.file.entries, alt_b);
+        assert_eq!(
+            before, "<Ctrl+Left>",
+            "Alt+B 语义行「修改前」应为语义操作当前键: {before}"
+        );
+    }
+
+    #[test]
     fn emacs_preset_binds_semantic_op_and_relocates_occupier() {
         // 用户核心诉求：Alt+B → Text.MoveToPreviousWordStart（Emacs 键绑定语义操作），
         // 并把原占用者 ShowPaletteMultiplexer 移位到 Alt+Shift+B。
@@ -2802,68 +3538,162 @@ mod tests {
         let n = a.apply_emacs_preset();
         assert_eq!(n, 2, "占用者移位 + 语义绑定 = 两处改动");
         assert_eq!(a.file.entries[0].keys, "<Alt+Shift+B>");
-        assert_eq!(a.file.entries[0].action.as_deref(), Some("Window.ShowPaletteMultiplexer"));
+        assert_eq!(
+            a.file.entries[0].action.as_deref(),
+            Some("Window.ShowPaletteMultiplexer")
+        );
         assert_eq!(a.file.entries[1].keys, "<Alt+B>");
-        assert_eq!(a.file.entries[1].action.as_deref(), Some("Text.MoveToPreviousWordStart"));
+        assert_eq!(
+            a.file.entries[1].action.as_deref(),
+            Some("Text.MoveToPreviousWordStart")
+        );
         assert_eq!(a.emacs_conflict_count(), 0, "处理后无残留冲突");
         assert!(a.dirty, "一键改绑后应标记未保存");
     }
 
     #[test]
-    fn emacs_preset_release_key_and_keep_correct_bindings() {
-        // 释放行（Ctrl+W）把占用者移位而空出原键；已正确绑定的语义键与无关裸字符不受影响。
+    fn emacs_preset_leaves_unlisted_keys_alone() {
+        // 用户诉求：预设未收录的键（无对应 Emacs 操作，如 Ctrl+S、Ctrl+N）不做让位，
+        // WindTerm 原有功能（保存、新建、关闭视图等）保持原键原模式不动。
         let mut a = app_with(vec![
-            ent("<Ctrl+W>", Some("Window.CloseActiveView")), // 释放 → Ctrl+Shift+W
-            ent("<Alt+F>", Some("Text.MoveToNextWordStart")), // 已正确绑定，不动
-            ent("i", Some("Text.Other")),                   // 无关裸字符，不动
+            ent("<Ctrl+S>", Some("Editor.Save")),
+            ent("<Ctrl+S>", Some("Text.Save")),
+            ent("<Ctrl+N>", Some("Window.NewTab")),
+            ent("<Ctrl+W>", Some("Window.CloseActiveView")),
+            ent("i", Some("Text.Other")), // 无关裸字符
         ]);
-        assert_eq!(a.emacs_conflict_count(), 1);
+        assert_eq!(a.emacs_conflict_count(), 0, "未收录键不算冲突");
         let n = a.apply_emacs_preset();
-        assert_eq!(n, 1);
-        assert_eq!(a.file.entries[0].keys, "<Ctrl+Shift+W>");
-        assert_eq!(a.file.entries[0].action.as_deref(), Some("Window.CloseActiveView"));
-        assert_eq!(a.file.entries[1].keys, "<Alt+F>");
-        assert_eq!(a.file.entries[2].keys, "i");
-        assert_eq!(a.emacs_conflict_count(), 0);
-        assert!(a.dirty);
+        assert_eq!(n, 0, "未收录键不做任何让位/改绑");
+        for (i, k) in ["<Ctrl+S>", "<Ctrl+S>", "<Ctrl+N>", "<Ctrl+W>", "i"]
+            .iter()
+            .enumerate()
+        {
+            assert_eq!(a.file.entries[i].keys.as_str(), *k, "第 {i} 条应保持原键");
+        }
+        assert!(
+            a.file.entries.iter().all(|e| e.modes == "normal"),
+            "未收录键条目模式也不得被改动"
+        );
+        assert!(!a.dirty, "无改动不应标记脏");
     }
 
     #[test]
-    fn emacs_preset_release_key_matches_prefix_bracket_form() {
-        // 真实 WindTerm 中大量冲突键以「前缀/挂起键」形 `[<Ctrl+W>]` 存在：漏匹配会既让
-        // 冲突计数为 0（误判已经处理）、又让一键应用漏掉该键。裸形与前缀形都必须被处理，
-        // 且移位后保留前缀语义 `[<Ctrl+Shift+W>]`。
+    fn emacs_preset_avoids_duplicate_when_shift_target_occupied_by_prefix() {
+        // 用户诉求：移位且不可让两个功能共用同一快捷键。若目标 Shift 键已被「前缀形」占用，
+        // 占用集合须按裸键判重，避免把占用者移到一个已被占用的键上造成重复绑定。
         let mut a = app_with(vec![
-            ent("[<Ctrl+W>]", Some("Window.CloseActiveView")), // 前缀形占用者 → [Ctrl+Shift+W]
-            ent("<Ctrl+X>", Some("Text.Cut")),               // 裸形占用者 → Ctrl+Shift+X
+            ent("[<Alt+B>]", Some("Window.ShowPaletteMultiplexer")), // 前缀形占用 Alt+B
+            ent("[<Alt+Shift+B>]", Some("Window.Z")), // 目标 Alt+Shift+B 已被前缀形占用
+            ent("<Ctrl+Left>", Some("Text.MoveToPreviousWordStart")), // 语义操作 → Alt+B
+        ]);
+        let n = a.apply_emacs_preset();
+        assert_eq!(n, 2, "Alt+B 占用者移位 + 语义绑定");
+        // 语义操作落到 Alt+B。
+        let op = a
+            .file
+            .entries
+            .iter()
+            .filter(|e| e.action.as_deref() == Some("Text.MoveToPreviousWordStart"))
+            .map(|e| e.keys.clone())
+            .collect::<Vec<_>>();
+        assert!(
+            op.contains(&"<Alt+B>".to_string()),
+            "语义操作应绑定到 Alt+B: {op:?}"
+        );
+        // Alt+B 占用者必须被移走，且不能落在已被 [<Alt+Shift+B>] 占用的键上。
+        assert!(
+            a.file
+                .entries
+                .iter()
+                .all(|e| !key_matches(&e.keys, "<Alt+B>")
+                    || e.action.as_deref() == Some("Text.MoveToPreviousWordStart")),
+            "Alt+B 原占用者必须被清掉"
+        );
+        assert!(
+            a.file
+                .entries
+                .iter()
+                .filter(|e| key_matches(&e.keys, "<Alt+Shift+B>"))
+                .count()
+                == 1,
+            "Alt+Shift+B 上不允许重复绑定"
+        );
+        // 窗口 Z 保持原键，占用者被移到其它空闲键。
+        let z = a
+            .file
+            .entries
+            .iter()
+            .find(|e| e.action.as_deref() == Some("Window.Z"))
+            .unwrap();
+        assert_eq!(z.keys, "[<Alt+Shift+B>]");
+        // 全表不得出现重复键。
+        let mut seen = std::collections::HashSet::new();
+        for e in &a.file.entries {
+            let b = bare_key(&e.keys).to_owned();
+            assert!(seen.insert(b), "出现重复键: {}", e.keys);
+        }
+        assert_eq!(a.emacs_conflict_count(), 0);
+    }
+
+    #[test]
+    fn emacs_preset_semantic_key_matches_prefix_bracket_form() {
+        // 真实 WindTerm 中大量冲突键以「前缀/挂起键」形 `[<Alt+B>]` 存在：漏匹配会既让
+        // 冲突计数为 0（误判已经处理）、又让一键应用漏掉该键。裸形与前缀形都必须被处理，
+        // 且移位后保留前缀语义 `[<Alt+Shift+B>]`。
+        let mut a = app_with(vec![
+            ent("[<Alt+B>]", Some("Window.ShowPaletteMultiplexer")), // 前缀形占用者
+            ent("<Ctrl+K>", Some("Text.Cut")),                       // 裸形占用者
+            ent("<Ctrl+Left>", Some("Text.MoveToPreviousWordStart")), // 语义操作 → Alt+B
         ]);
         assert_eq!(a.emacs_conflict_count(), 2, "裸形与前缀形占比都应判为冲突");
         let n = a.apply_emacs_preset();
-        assert_eq!(n, 2);
-        assert_eq!(a.file.entries[0].keys, "[<Ctrl+Shift+W>]", "前缀形保持前缀形");
-        assert_eq!(a.file.entries[0].action.as_deref(), Some("Window.CloseActiveView"));
-        assert_eq!(a.file.entries[1].keys, "<Ctrl+Shift+X>", "裸形换成裸形");
+        assert_eq!(n, 3);
+        assert_eq!(
+            a.file.entries[0].keys, "[<Alt+Shift+B>]",
+            "前缀形保持前缀形"
+        );
+        assert_eq!(
+            a.file.entries[0].action.as_deref(),
+            Some("Window.ShowPaletteMultiplexer")
+        );
+        // Ctrl+K 语义行（Text.DeleteLineToEnd）的裸形占用者被移到空闲 Shift 键，语义操作绑上。
+        let cut = a
+            .file
+            .entries
+            .iter()
+            .find(|e| e.action.as_deref() == Some("Text.Cut"))
+            .unwrap();
+        assert_ne!(cut.keys, "<Ctrl+K>", "裸形占用者应已移出 Ctrl+K");
+        assert_eq!(
+            a.file.entries[2].keys, "<Alt+B>",
+            "语义操作应绑上 Alt+B（裸形）"
+        );
         assert_eq!(a.emacs_conflict_count(), 0);
     }
 
     #[test]
     fn emacs_preset_respects_editable_after_keys() {
-        // 弹窗内可编辑「修改后」：把 Ctrl+W 的占用者改绑到自定义键而非默认替代键。
+        // 弹窗内可编辑「修改后」：把语义操作改绑到自定义键而非默认 Emacs 标准键；
+        // 目标键改变后，原 Emacs 键上的占用者无需再让位。
         let mut a = app_with(vec![
-            ent("<Ctrl+W>", Some("Window.CloseActiveView")),
-            ent("<Alt+F>", Some("Text.MoveToNextWordStart")),
+            ent("<Ctrl+A>", Some("Editor.SelectAll")), // Ctrl+A 的占用者
+            ent("<Home>", Some("Text.MoveToLineHome")), // 语义操作（Ctrl+A 行）
         ]);
         let mut draft = EmacsDraft::defaults();
         let row = EMACS_PRESET
             .iter()
-            .position(|it| it.key == "<Ctrl+W>")
-            .expect("预设应含 Ctrl+W");
-        draft.new_keys[row] = "<Ctrl+Alt+W>".to_string(); // 自定义占用者去向
+            .position(|it| it.key == "<Ctrl+A>")
+            .expect("预设应含 Ctrl+A");
+        draft.new_keys[row] = "<Ctrl+Alt+A>".to_string(); // 自定义语义操作去向
         a.emacs_draft = Some(draft);
         let n = a.apply_emacs_preset();
-        assert_eq!(n, 1);
-        assert_eq!(a.file.entries[0].keys, "<Ctrl+Alt+W>");
-        assert_eq!(a.emacs_conflict_count(), 0);
+        assert_eq!(n, 1, "仅语义操作改绑到自定义键，Ctrl+A 占用者无需让位");
+        assert_eq!(a.file.entries[0].keys, "<Ctrl+A>", "占用者保持原键");
+        assert_eq!(a.file.entries[1].keys, "<Ctrl+Alt+A>", "语义操作到自定义键");
+        // 语义操作改走自定义键后，标准键 Ctrl+A 留给原占用者：相对预设默认键仍算偏离
+        // （徽标如实提示；重开弹窗草稿重置为默认键，再次应用即收敛回标准绑定）。
+        assert_eq!(a.emacs_conflict_count(), 1);
     }
 
     #[test]
@@ -2875,10 +3705,11 @@ mod tests {
                 Err(e) => panic!("无法读取样本：{e}"),
             };
         let mut a = EditorApp::new();
+        let orig_entries = file.entries.clone();
         a.file = file;
         a.raw = Some(raw);
         let before = a.emacs_conflict_count();
-        assert!(before >= 16, "默认样本应存在大量冲突，实际 {before}");
+        assert!(before >= 9, "默认样本应存在多个语义键冲突，实际 {before}");
         let applied = a.apply_emacs_preset();
         assert!(applied > 0, "应产生改动");
         assert_eq!(a.emacs_conflict_count(), 0, "处理后不应残留冲突键");
@@ -2894,7 +3725,10 @@ mod tests {
             "Text.DeleteLineToEnd",
         ] {
             assert!(
-                a.file.entries.iter().any(|e| e.action.as_deref() == Some(op)),
+                a.file
+                    .entries
+                    .iter()
+                    .any(|e| e.action.as_deref() == Some(op)),
                 "语义操作应仍存在：{op}"
             );
         }
@@ -2903,6 +3737,29 @@ mod tests {
             "改绑后的原始字节仍应可解析为合法 JSON"
         );
         assert!(a.dirty);
+
+        // 一键应用不得在原样本既有重复之外引入新的同键绑定（同键多条目须不多于应用前）。
+        let dup_key_groups = |es: &[crate::model::KeymapEntry]| {
+            let mut counts = std::collections::HashMap::new();
+            for e in es {
+                *counts.entry(bare_key(&e.keys).to_owned()).or_insert(0usize) += 1;
+            }
+            counts.into_iter().filter(|(_, c)| *c > 1).count()
+        };
+        assert!(
+            dup_key_groups(&a.file.entries) <= dup_key_groups(&orig_entries),
+            "应用后同键多条目的分组数不得超过应用前"
+        );
+
+        // 二次应用必须幂等：真实样本含 139 个「同名操作、不同快捷键」条目，再次应用
+        // 不得把它们的第二条也挪到 Emacs 键上（重复绑定），不得改动任何字节。
+        let raw_after_first = a.raw.clone();
+        let reapplied = a.apply_emacs_preset();
+        assert_eq!(
+            reapplied, 0,
+            "再次应用应为幂等（0 实际改动），实际 {reapplied}"
+        );
+        assert_eq!(a.raw, raw_after_first, "二次应用不得改动任何字节");
     }
 
     #[test]

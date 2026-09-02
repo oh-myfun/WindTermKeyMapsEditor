@@ -53,6 +53,12 @@ fn harness_for(entries: Vec<KeymapEntry>) -> Harness<'static, EditorApp> {
         .build_eframe(|_cc| app_with(entries))
 }
 
+fn harness_sized(entries: Vec<KeymapEntry>, size: [f32; 2]) -> Harness<'static, EditorApp> {
+    Harness::builder()
+        .with_size(size)
+        .build_eframe(|_cc| app_with(entries))
+}
+
 /// 表格中所有 keys 单元格（形如 `<Ctrl+..>` / `(?P<..>` 的可点击按钮）的 label，按树顺序。
 fn keys_cell_labels(h: &Harness<'_, EditorApp>) -> Vec<String> {
     h.query_all_by(|n| {
@@ -368,6 +374,29 @@ fn cancel_keeps_original_keys() {
 }
 
 #[test]
+fn title_close_button_clicks_close_dialog() {
+    // 官方 Window 标题栏风格的手绘关闭 X：热区 ≥ icon_width（14px，比旧文本字符「✖」的
+    // ~9px 大），accesskit 标签为「关闭窗口」，点击即关闭弹窗且不落盘。
+    let mut h = harness_for(vec![ent("<Ctrl+C>", "Text.Copy")]);
+    open_keys_dialog(&mut h, "<Ctrl+C>");
+    let btn = h
+        .query_all_by(|n| {
+            n.role() == egui::accesskit::Role::Button && n.label().as_deref() == Some("关闭窗口")
+        })
+        .next()
+        .expect("应能定位到标题栏关闭按钮");
+    let r = btn.rect();
+    assert!(
+        r.width() >= 14.0 && r.height() >= 14.0,
+        "关闭按钮热区应不小于 icon_width，实际 {r:?}"
+    );
+    btn.click();
+    h.step();
+    assert!(h.state().keys_edit.is_none(), "点击关闭 X 应关闭弹窗");
+    assert!(!h.state().dirty, "关闭不应标记未保存");
+}
+
+#[test]
 fn keys_dialog_edits_modes_and_shows_descriptions() {
     let mut h = harness_for(vec![ent("<Ctrl+C>", "Text.Copy")]);
     open_keys_dialog(&mut h, "<Ctrl+C>");
@@ -614,8 +643,11 @@ fn save_without_file_shows_error() {
 fn save_with_file_writes_and_clears_dirty() {
     let dir = std::env::temp_dir();
     let path = dir.join(format!("wke_save_test_{}.keymaps", std::process::id()));
-    std::fs::write(&path, r#"[{"keys":"<Ctrl+C>","modes":"normal","action":"Text.Copy"}]"#)
-        .expect("应能写入临时文件");
+    std::fs::write(
+        &path,
+        r#"[{"keys":"<Ctrl+C>","modes":"normal","action":"Text.Copy"}]"#,
+    )
+    .expect("应能写入临时文件");
     let mut a = EditorApp::new();
     a.open_path(&path);
     // 通过真实的「就地编辑」路径改 keys（这样会同步更新原始字节缓冲，保存时逐字节写回）。
@@ -640,7 +672,10 @@ fn save_with_file_writes_and_clears_dirty() {
     );
     let text = std::fs::read_to_string(&path).unwrap_or_default();
     assert!(text.contains("<Ctrl+V>"), "保存后文件应包含编辑后的快捷键");
-    assert!(text.contains("Text.Copy"), "保存后文件应保留快捷键以外的字段");
+    assert!(
+        text.contains("Text.Copy"),
+        "保存后文件应保留快捷键以外的字段"
+    );
     let _ = std::fs::remove_file(&path);
 }
 
@@ -690,60 +725,62 @@ fn theme_toggle_button_anchored_to_top_right() {
 }
 
 #[test]
-    fn help_button_shows_info_and_opens_complete_guide_and_closes() {
-        let mut h = harness_for(vec![ent("<Ctrl+C>", "Text.Copy")]);
+fn help_button_shows_info_and_opens_complete_guide_and_closes() {
+    let mut h = harness_for(vec![ent("<Ctrl+C>", "Text.Copy")]);
+    h.step();
+    h.get_by_label("帮助").click();
+    // Modal 的 ScrollArea(max_height=400) 需数帧测量后才稳定，先多跑几帧再交互。
+    for _ in 0..8 {
         h.step();
-        h.get_by_label("帮助").click();
-        // Modal 的 ScrollArea(max_height=400) 需数帧测量后才稳定，先多跑几帧再交互。
-        for _ in 0..8 {
-            h.step();
-        }
-        // 顶部信息：作者 / 仓库地址 / 版本号
-        assert!(
-            h.query_by_label_contains("Myfung").is_some(),
-            "帮助顶部应显示作者 Myfung"
-        );
-        assert!(
-            h.query_by_label_contains("github.com/oh-myfun/WindTermKeyMapsEditor").is_some(),
-            "帮助顶部应显示仓库地址链接"
-        );
-        assert!(
-            h.query_by_label_contains(&format!("v{}", env!("CARGO_PKG_VERSION"))).is_some(),
-            "帮助顶部应显示版本号"
-        );
-        // 标题与正文小节仍在
-        assert!(
-            h.query_by_label_contains("快捷键设置完整说明").is_some(),
-            "帮助弹窗应显示标题"
-        );
-        assert!(
-            h.query_by_label_contains("三种合法形式").is_some(),
-            "帮助应包含定义说明小节"
-        );
-        assert!(
-            h.query_by_label_contains("录制按钮用法").is_some(),
-            "帮助应包含录制说明小节"
-        );
-        assert!(
-            h.query_by_label_contains("键名拼写规范").is_some(),
-            "帮助应包含键名拼写规范小节"
-        );
-        assert!(
-            h.query_by_label_contains("vim 折叠命令").is_some(),
-            "帮助应包含折叠命令说明小节"
-        );
-        // 关闭：布局已稳定，指针点击底部「关闭」应生效
-        h.get_by_label("关闭").click();
-        h.step(); // 点击：show_help 置 false（本帧弹窗仍渲染）
-        h.step(); // 重渲染：Modal 移除
-        assert!(
-            h.query_by_label_contains("快捷键设置完整说明").is_none(),
-            "关闭后帮助弹窗应消失"
-        );
     }
+    // 顶部信息：作者 / 仓库地址 / 版本号
+    assert!(
+        h.query_by_label_contains("Myfung").is_some(),
+        "帮助顶部应显示作者 Myfung"
+    );
+    assert!(
+        h.query_by_label_contains("github.com/oh-myfun/WindTermKeyMapsEditor")
+            .is_some(),
+        "帮助顶部应显示仓库地址链接"
+    );
+    assert!(
+        h.query_by_label_contains(&format!("v{}", env!("CARGO_PKG_VERSION")))
+            .is_some(),
+        "帮助顶部应显示版本号"
+    );
+    // 标题与正文小节仍在
+    assert!(
+        h.query_by_label_contains("快捷键设置完整说明").is_some(),
+        "帮助弹窗应显示标题"
+    );
+    assert!(
+        h.query_by_label_contains("三种合法形式").is_some(),
+        "帮助应包含定义说明小节"
+    );
+    assert!(
+        h.query_by_label_contains("录制按钮用法").is_some(),
+        "帮助应包含录制说明小节"
+    );
+    assert!(
+        h.query_by_label_contains("键名拼写规范").is_some(),
+        "帮助应包含键名拼写规范小节"
+    );
+    assert!(
+        h.query_by_label_contains("vim 折叠命令").is_some(),
+        "帮助应包含折叠命令说明小节"
+    );
+    // 关闭：布局已稳定，指针点击底部「关闭」应生效
+    h.get_by_label("关闭").click();
+    h.step(); // 点击：show_help 置 false（本帧弹窗仍渲染）
+    h.step(); // 重渲染：Modal 移除
+    assert!(
+        h.query_by_label_contains("快捷键设置完整说明").is_none(),
+        "关闭后帮助弹窗应消失"
+    );
+}
 
 #[test]
-    fn record_clipboard_copy_captures_ctrl_c() {
+fn record_clipboard_copy_captures_ctrl_c() {
     // 复现 winit 把 Ctrl+C 翻译为 Event::Copy（同时移除 Key 事件）的真实路径：
     // 录制态下注入 Copy 事件，应被补获为 <Ctrl+C> 并替换原值 <Ctrl+V>。
     let mut h = harness_for(vec![ent("<Ctrl+V>", "Text.Paste")]);
@@ -784,7 +821,7 @@ fn last_row_is_reachable_by_scroll() {
     let mut h = harness_for(entries);
     h.step();
     let height: f32 = 660.0; // harness_for 的窗口内高（980x660）
-    // 用最后一条的 keys 单元格（label 唯一）来测量其屏幕位置。
+                             // 用最后一条的 keys 单元格（label 唯一）来测量其屏幕位置。
     let top_before = h
         .query_by_label("<Ctrl+199>")
         .expect("最后一行应在树中")
@@ -827,7 +864,7 @@ fn table_header_stays_visible_when_scrolled_down() {
     let mut h = harness_for(entries);
     h.step();
     let height: f32 = 660.0; // harness_for 的窗口内高
-    // 滚到最后一行。
+                             // 滚到最后一行。
     h.query_by_label("<Ctrl+199>")
         .expect("最后一行应在树中")
         .scroll_to_me();
@@ -887,8 +924,8 @@ fn zoom_event_changes_pixels_per_point() {
 #[test]
 fn emacs_modal_renders_full_editable_list_and_applies() {
     let mut h = harness_for(vec![
-        ent("<Ctrl+W>", "Window.CloseActiveView"),          // 释放行占用者
-        ent("<Alt+B>", "Window.ShowPaletteMultiplexer"),    // 语义键占用者
+        ent("<Ctrl+W>", "Window.CloseActiveView"), // 未收录键：不做让位
+        ent("<Alt+B>", "Window.ShowPaletteMultiplexer"), // 语义键占用者
         ent("<Ctrl+Left>", "Text.MoveToPreviousWordStart"), // 语义操作 → 将被绑到 Alt+B
     ]);
     h.step();
@@ -897,9 +934,10 @@ fn emacs_modal_renders_full_editable_list_and_applies() {
     h.step();
     h.step();
     h.step(); // Modal（Area）首帧 sizing，多跑几帧稳定渲染
-    // 弹窗为每条预设渲染一行「复位」按钮：行数 = EMACS_PRESET 条数。
-    // （注：egui/kittest 下带 color 的 RichText label 提取为空串，故改用按钮计数断言“完整清单”。）
-    // 只统计“复位”按钮（表头第 5 列现也显示“复位”标题，那是 Label 非按钮）。
+              // 弹窗为每条预设渲染一行「复位」按钮；此样本中 Alt+B 被其它操作占用，生成一行
+              // 独立的「让位行」（复位按钮禁用）：11 个主行 + 1 个让位行。
+              // （注：egui/kittest 下带 color 的 RichText label 提取为空串，故改用按钮计数断言“完整清单”。）
+              // 只统计“复位”按钮（表头第 5 列现也显示“复位”标题，那是 Label 非按钮）。
     let reset_count = h
         .query_all_by(|n| {
             n.role() == egui::accesskit::Role::Button && n.label().is_some_and(|l| l == "复位")
@@ -907,8 +945,8 @@ fn emacs_modal_renders_full_editable_list_and_applies() {
         .count();
     assert_eq!(
         reset_count,
-        windterm_keymaps_editor::app::EMACS_PRESET.len(),
-        "弹窗应列出完整修改清单（每行一个复位按钮），实际 {reset_count}"
+        windterm_keymaps_editor::app::EMACS_PRESET.len() + 1,
+        "弹窗应列出完整修改清单（11 主行 + 1 让位行），实际 {reset_count}"
     );
     assert!(
         h.query_by_label_contains("一键应用").is_some(),
@@ -917,7 +955,12 @@ fn emacs_modal_renders_full_editable_list_and_applies() {
     h.get_by_label("一键应用").click_accesskit();
     h.step();
     h.step(); // 应用后关闭弹窗的重渲染
-    assert_eq!(h.state().file.entries[0].keys, "<Ctrl+Shift+W>");
+              // 未收录的 Ctrl+W 不做让位，保持原键；Alt+B 占用者移位，语义操作绑上 Alt+B。
+    assert_eq!(
+        h.state().file.entries[0].keys,
+        "<Ctrl+W>",
+        "未收录键不做让位"
+    );
     assert_eq!(h.state().file.entries[1].keys, "<Alt+Shift+B>");
     assert_eq!(h.state().file.entries[2].keys, "<Alt+B>");
     assert_eq!(
@@ -955,8 +998,80 @@ fn emacs_modal_columns_fit_within_viewport() {
         "Emacs 弹窗表格最右列(复位)右缘 {max_right} 超出视口宽 980，列被挤出窗口"
     );
     assert!(
-        max_right > 700.0,
+        max_right > 400.0,
         "Emacs 弹窗最右列(复位)右缘 {max_right} 过小，5 列可能未完整展开"
+    );
+}
+
+/// 回归断言：高 ppp / 窄窗底下，Emacs 弹窗的 6 列（描述列用 remainder 吸收剩余宽）应
+/// 仍完整留在视口内、右侧不再多出横向滚动/孤立分隔线。此前各列固定宽且描述列不吸收，
+/// 一旦弹窗被 ppp 收缩到 < 列总宽，右侧「生效模式/修改后/复位」列就被挤出、出现横向
+/// 滚动条（用户感知为“最右边多了一列分隔线”）。
+#[test]
+fn emacs_modal_columns_stay_within_narrow_viewport() {
+    let mut h = Harness::builder()
+        .with_size([640.0, 660.0]) // 模拟高 ppp 下的窄弹窗
+        .build_eframe(|_cc| {
+            app_with(vec![
+                ent("<Ctrl+W>", "Window.CloseActiveView"),
+                ent("<Alt+B>", "Window.ShowPaletteMultiplexer"),
+                ent("<Ctrl+Left>", "Text.MoveToPreviousWordStart"),
+            ])
+        });
+    h.step();
+    h.get_by_label("Emacs风格").click();
+    for _ in 0..10 {
+        h.step();
+    }
+    let resets: Vec<_> = h
+        .query_all_by(|n| {
+            n.role() == egui::accesskit::Role::Button && n.label().as_deref() == Some("复位")
+        })
+        .collect();
+    assert!(!resets.is_empty(), "窄弹窗下也应有复位按钮并完整显示");
+    let max_right = resets
+        .iter()
+        .map(|n| n.rect().max.x)
+        .fold(0.0_f32, f32::max);
+    assert!(
+        max_right < 640.0,
+        "窄视口(640)下最左列仍被横向挤出? 复位右缘 {max_right} >= 视口宽"
+    );
+    // 复位列必须确实出现在靠右位置（各固定列都展开了，而不是被裁剪到看不见）。
+    assert!(
+        max_right > 300.0,
+        "窄视口下复位右缘 {max_right} 过小，后面的列疑似被挤出/未展开"
+    );
+}
+
+/// 回归断言：Emacs 弹窗列宽随弹窗宽按比例分配。窗口收窄时弹窗默认宽随之变小，
+/// 各内容列按权重同步收缩（复位列左缘显著左移）；若列宽固定，两个窗口宽度下
+/// 复位列左缘只会因弹窗居中偏移约 28px，远小于比例分配的位移。
+#[test]
+fn emacs_modal_columns_scale_with_dialog_width() {
+    let entries = vec![
+        ent("<Ctrl+W>", "Window.CloseActiveView"),
+        ent("<Alt+B>", "Window.ShowPaletteMultiplexer"),
+        ent("<Ctrl+Left>", "Text.MoveToPreviousWordStart"),
+    ];
+    let reset_left_x = |win_w: f32| -> f32 {
+        let mut h = harness_sized(entries.clone(), [win_w, 660.0]);
+        h.step();
+        h.get_by_label("Emacs风格").click();
+        for _ in 0..10 {
+            h.step();
+        }
+        h.query_all_by(|n| {
+            n.role() == egui::accesskit::Role::Button && n.label().as_deref() == Some("复位")
+        })
+        .map(|n| n.rect().min.x)
+        .fold(f32::MAX, f32::min)
+    };
+    let x_wide = reset_left_x(980.0); // 弹窗默认宽 900
+    let x_narrow = reset_left_x(700.0); // 弹窗默认宽 = 700-24 = 676
+    assert!(
+        x_wide - x_narrow > 150.0,
+        "窄弹窗下内容列应按比例收缩（复位列左缘应显著左移），宽 {x_wide} vs 窄 {x_narrow}"
     );
 }
 
@@ -1015,10 +1130,61 @@ fn emacs_after_col_reuses_shortcut_recorder() {
     h.get_by_label("取消").click_accesskit();
     h.step();
     h.step();
-    let draft = h.state().emacs_draft.as_ref().expect("取消后 Emacs 弹窗应仍打开");
+    let draft = h
+        .state()
+        .emacs_draft
+        .as_ref()
+        .expect("取消后 Emacs 弹窗应仍打开");
     assert_eq!(
         draft.new_keys[1], "<Ctrl+E>",
         "取消后该行「修改后」应保持原值，不回退也不改写"
+    );
+}
+
+/// 回归断言：让位行的「修改后快捷键」列支持编辑——点击应打开「修改让位目标」子编辑窗，
+/// 确定后写回 `emacs_draft.reloc[row]`，应用时按该自定义目标位移位（与自动推演目标一致地为
+/// 占用者让位，但允许用户改写）。
+#[test]
+fn emacs_reloc_row_after_key_is_editable() {
+    let mut h = harness_for(vec![
+        ent("<Alt+B>", "Window.ShowPaletteMultiplexer"), // Alt+B 的占用者 → 让位行
+        ent("<Ctrl+Left>", "Text.MoveToPreviousWordStart"), // Alt+B 语义操作
+    ]);
+    h.step();
+    h.get_by_label("Emacs风格").click();
+    for _ in 0..8 {
+        h.step();
+    }
+    // Alt+B 语义行（index 4）的修改后快捷键显示 <Alt+B>；其「让位行」占用者的修改后快捷键
+    // 显示自动推演目标 <Alt+Shift+B>（全树唯一，可精确定位）。
+    h.get_by_label("<Alt+Shift+B>").click();
+    for _ in 0..4 {
+        h.step();
+    }
+    assert!(
+        h.query_by_label_contains("修改让位目标").is_some(),
+        "点击让位行「修改后快捷键」应打开「修改让位目标」子编辑窗"
+    );
+    // 走录制路径改写为新目标键。
+    let input = keys_input(&h);
+    input.focus();
+    h.step();
+    h.get_by_label("录制").click();
+    h.step();
+    h.key_press_modifiers(egui::Modifiers::CTRL, egui::Key::J);
+    h.step();
+    h.get_by_label("确定").click_accesskit();
+    h.step();
+    h.step();
+    let draft = h
+        .state()
+        .emacs_draft
+        .as_ref()
+        .expect("子编辑窗关闭后 Emacs 弹窗应仍打开");
+    assert_eq!(
+        draft.reloc[4].as_str(),
+        "<Ctrl+J>",
+        "让位行改写的新目标键应写回 emacs_draft.reloc[4]"
     );
 }
 
@@ -1028,7 +1194,10 @@ fn main_table_modes_cell_opens_editor_and_writes_back() {
     let mut h = harness_for(vec![ent("<Ctrl+C>", "Text.Copy")]);
     h.step();
     // 主表「生效模式」列显示条目 modes = "normal"。
-    assert!(h.query_by_label("normal").is_some(), "主表应有「生效模式」列");
+    assert!(
+        h.query_by_label("normal").is_some(),
+        "主表应有「生效模式」列"
+    );
     // 点击 modes 单元格（此时无弹窗，「normal」唯一）→ 弹出生效模式编辑窗。
     h.get_by_label("normal").click();
     h.step();
@@ -1047,10 +1216,10 @@ fn main_table_modes_cell_opens_editor_and_writes_back() {
     assert!(h.state().dirty, "修改生效模式后应标记未保存");
 }
 
-/// Emacs 弹窗「生效模式」列：释放行固定显示禁用的「不修改」；语义行单元格可点出子编辑窗，
-/// 编辑结果写回草稿，应用时改到目标条目；其它字段/键不受影响。
+/// Emacs 弹窗「修改后生效模式」列：所有行都可编辑。语义行单元格（Binding 槽）可点出
+/// 子编辑窗，编辑结果写回草稿、应用时改到目标条目；释放行/让位行不再只读。不写「不修改」。
 #[test]
-fn emacs_modes_col_edit_semantic_row_and_release_disabled() {
+fn emacs_modes_col_editable_semantic_row() {
     // 语义行目标条目用唯一 modes，便于在 Emacs 弹窗内定位其「生效模式」单元格。
     let target = KeymapEntry {
         keys: "<Ctrl+Left>".into(),
@@ -1060,8 +1229,8 @@ fn emacs_modes_col_edit_semantic_row_and_release_disabled() {
         extra: Default::default(),
     };
     let mut h = harness_for(vec![
-        ent("<Ctrl+W>", "Window.CloseActiveView"),          // 释放行占用者
-        ent("<Alt+B>", "Window.ShowPaletteMultiplexer"),    // 语义键占用者
+        ent("<Ctrl+W>", "Window.CloseActiveView"), // 释放行占用者
+        ent("<Alt+B>", "Window.ShowPaletteMultiplexer"), // 语义键占用者
         target,
     ]);
     h.step();
@@ -1069,25 +1238,22 @@ fn emacs_modes_col_edit_semantic_row_and_release_disabled() {
     for _ in 0..8 {
         h.step();
     }
-    // 释放行固定显示「不修改」按钮，数量 = 预设中 bind=None 的行数。
-    let unset_count = h
+    // 确认无残留「不修改」按钮（该表述已弃用，改为各列可编辑并显示完整 modes）。
+    let unmod_count = h
         .query_all_by(|n| {
             n.role() == egui::accesskit::Role::Button && n.label().is_some_and(|l| l == "不修改")
         })
         .count();
     assert_eq!(
-        unset_count,
-        windterm_keymaps_editor::app::EMACS_PRESET
-            .iter()
-            .filter(|it| it.bind.is_none())
-            .count(),
-        "每个释放行应显示「不修改」，实际 {unset_count}"
+        unmod_count, 0,
+        "释放行不应再显示「不修改」按钮，实际 {unmod_count}"
     );
-    // 语义行（Alt+B）的「生效模式」单元格显示目标条目 modes。该字符串在树中先出现于主表
-    // 后出现于 Emacs 弹窗（弹窗 layer 更后），取最后一个即弹窗内的单元格。
+    // 语义行（Alt+B）的「生效模式」单元格显示目标条目的新生效模式（默认 = 旧 modes + remote）。
+    // 该字符串在树中先出现于主表后出现于 Emacs 弹窗（弹窗 layer 更后），取最后一个即弹窗内的单元格。
     let mut cells: Vec<_> = h
         .query_all_by(|n| {
-            n.role() == egui::accesskit::Role::Button && n.label().as_deref() == Some("normal, command")
+            n.role() == egui::accesskit::Role::Button
+                && n.label().as_deref() == Some("normal, command, remote")
         })
         .collect();
     let cell = cells.pop().expect("应有语义行「生效模式」单元格");
@@ -1096,10 +1262,11 @@ fn emacs_modes_col_edit_semantic_row_and_release_disabled() {
         h.step();
     }
     assert!(
-        h.query_by_label_contains("编辑本行目标的生效模式").is_some(),
+        h.query_by_label_contains("编辑本行目标的生效模式")
+            .is_some(),
         "点击语义行「生效模式」应打开子编辑窗"
     );
-    // 取消勾选 command → modes 变为 normal。
+    // 取消勾选 command → modes 变为 normal, remote（预填含 remote）。
     click_modes_checkbox(&mut h, "command");
     h.step();
     h.get_by_label("确定").click_accesskit();
@@ -1108,7 +1275,7 @@ fn emacs_modes_col_edit_semantic_row_and_release_disabled() {
     let draft = h.state().emacs_draft.as_ref().expect("Emacs 弹窗应仍打开");
     assert_eq!(
         draft.new_modes[4].as_deref(),
-        Some("normal"),
+        Some("normal, remote"),
         "语义行模式编辑结果应写回草稿（Alt+B = index 4）"
     );
     // 一键应用：目标条目 modes 一并更新，键绑定到 Alt+B。
@@ -1122,6 +1289,106 @@ fn emacs_modes_col_edit_semantic_row_and_release_disabled() {
         .iter()
         .find(|e| e.action.as_deref() == Some("Text.MoveToPreviousWordStart"))
         .expect("应有该语义条目");
-    assert_eq!(target.modes, "normal", "应用后语义条目 modes 应更新");
+    assert_eq!(
+        target.modes, "normal, remote",
+        "应用后语义条目 modes 应更新"
+    );
     assert_eq!(target.keys, "<Alt+B>", "应用后语义条目标键应为 Alt+B");
+}
+
+/// 回归断言：让位行（被移位的占用者）的「修改后生效模式」列支持编辑——点击打开子编辑窗
+/// （Reloc 槽），确定后写回 `emacs_draft.reloc_modes[row]`；一键应用时把该占用者条目的
+/// modes 一并改写，并移出被让出的 Emacs 键。
+#[test]
+fn emacs_reloc_row_modes_is_editable() {
+    // Alt+B 语义键被占用 → 生成让位行；占用者 modes 用唯一值 "command" 便于定位。
+    let occupier = KeymapEntry {
+        keys: "<Alt+B>".into(),
+        modes: "command".into(),
+        action: Some("Window.ShowPaletteMultiplexer".into()),
+        script: None,
+        extra: Default::default(),
+    };
+    let target = KeymapEntry {
+        keys: "<Ctrl+Left>".into(),
+        modes: "normal".into(),
+        action: Some("Text.MoveToPreviousWordStart".into()), // Alt+B 语义操作（预设 index 4）
+        script: None,
+        extra: Default::default(),
+    };
+    let mut h = harness_for(vec![occupier, target]);
+    h.step();
+    h.get_by_label("Emacs风格").click();
+    for _ in 0..8 {
+        h.step();
+    }
+    // 让位行「修改后生效模式」显示占用者当前 modes="command"。该字符串的按钮在主表与弹窗
+    // 各出现一次，弹窗 layer 更后，取最后一个即弹窗让位行单元格。
+    let mut cells: Vec<_> = h
+        .query_all_by(|n| {
+            n.role() == egui::accesskit::Role::Button && n.label().as_deref() == Some("command")
+        })
+        .collect();
+    let cell = cells.pop().expect("应有让位行「修改后生效模式」单元格");
+    cell.click();
+    for _ in 0..4 {
+        h.step();
+    }
+    assert!(
+        h.query_by_label_contains("编辑本行目标的生效模式")
+            .is_some(),
+        "点击让位行「修改后生效模式」应打开子编辑窗"
+    );
+    // 追加 remote → modes 变为 command, remote。
+    click_modes_checkbox(&mut h, "remote");
+    h.step();
+    h.get_by_label("确定").click_accesskit();
+    h.step();
+    h.step();
+    let draft = h.state().emacs_draft.as_ref().expect("Emacs 弹窗应仍打开");
+    assert_eq!(
+        draft.reloc_modes[4].as_deref(),
+        Some("command, remote"),
+        "让位行模式编辑结果应写回草稿（Alt+B = index 4）"
+    );
+    // 一键应用：占用者移位并改写 modes。
+    h.get_by_label("一键应用").click_accesskit();
+    h.step();
+    h.step();
+    let occ = h
+        .state()
+        .file
+        .entries
+        .iter()
+        .find(|e| e.action.as_deref() == Some("Window.ShowPaletteMultiplexer"))
+        .expect("应有占用者条目");
+    assert_eq!(occ.modes, "command, remote", "应用后占用者 modes 应更新");
+    assert_ne!(occ.keys, "<Alt+B>", "应用后占用者应移出 Alt+B");
+}
+
+/// 回归断言：同一 Emacs 键被多个不同操作占用时（如 `<Ctrl+A>` 上同时有 `Editor.Save`
+/// 与 `Text.Save`），弹窗须为每个占用者各生成一行独立让位行，且每行描述都带【让位】标记。
+#[test]
+fn emacs_multiple_occupiers_each_get_reloc_row() {
+    let mut h = harness_for(vec![
+        ent("<Ctrl+A>", "Editor.Save"),
+        ent("<Ctrl+A>", "Text.Save"),
+        ent("<Home>", "Text.MoveToLineHome"),
+    ]);
+    h.step();
+    h.get_by_label("Emacs风格").click();
+    for _ in 0..8 {
+        h.step();
+    }
+    // 11 个主行 + 2 个让位行 = len + 2 个「复位」按钮。
+    let reloc_count = h
+        .query_all_by(|n| {
+            n.role() == egui::accesskit::Role::Button && n.label().as_deref() == Some("复位")
+        })
+        .count();
+    assert_eq!(
+        reloc_count,
+        windterm_keymaps_editor::app::EMACS_PRESET.len() + 2,
+        "双占用者应各生成一行让位行，实际 {reloc_count}"
+    );
 }
