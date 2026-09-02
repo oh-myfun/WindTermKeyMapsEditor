@@ -200,7 +200,9 @@ fn run_selftest(file: Option<&Path>) -> i32 {
         return emit_fail(&mut log, format!("恢复失败：{e}"));
     }
     match read_keymap(&work) {
-        Ok(restored) if restored == original => log.push("[OK] 已从原状恢复，内容逐条一致（字节级）".into()),
+        Ok(restored) if restored == original => {
+            log.push("[OK] 已从原状恢复，内容逐条一致（字节级）".into())
+        }
         Ok(_) => return emit_fail(&mut log, "恢复后与原状不一致".into()),
         Err(e) => return emit_fail(&mut log, format!("恢复后重载失败：{e}")),
     }

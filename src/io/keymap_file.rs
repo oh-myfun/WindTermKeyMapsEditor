@@ -1,4 +1,4 @@
-﻿//! 文件 IO：读取/写出 `wind.keymaps`，写回前自动备份。
+//! 文件 IO：读取/写出 `wind.keymaps`，写回前自动备份。
 //!
 //! 写回采用「先写临时文件，再改名覆盖」的方式，避免中途崩溃留下半个文件；
 //! 覆盖前把当前磁盘上的原文件复制为带本地时间戳的备份
@@ -54,8 +54,8 @@ pub fn read_keymap(path: &Path) -> Result<KeymapFile> {
 /// （编码 / BOM / 换行符 / 空白缩进 / 字段顺序 / 快捷键以外的所有字段值）原样保留。
 /// 解析时剥除 UTF-8 BOM，但原始内容含 BOM，写回时一并保存。
 pub fn read_keymap_bytes(path: &Path) -> Result<(KeymapFile, Vec<u8>)> {
-    let raw = fs::read(path)
-        .map_err(|e| KeymapError::Io(e, format!("无法读取 {}", ctx_of(path))))?;
+    let raw =
+        fs::read(path).map_err(|e| KeymapError::Io(e, format!("无法读取 {}", ctx_of(path))))?;
     let f = parse_keymap_bytes(&raw)?;
     Ok((f, raw))
 }
@@ -189,7 +189,9 @@ fn scan_string_span(b: &[u8], p: usize) -> Result<(usize, usize)> {
 
 /// 从 `p` 起扫描一个 JSON 值，返回其后的字节偏移（不含其后逗号）。
 fn scan_value_end(b: &[u8], p: usize) -> Result<usize> {
-    let c = *b.get(p).ok_or_else(|| KeymapError::Validation("值被截断".into()))?;
+    let c = *b
+        .get(p)
+        .ok_or_else(|| KeymapError::Validation("值被截断".into()))?;
     match c {
         b'{' | b'[' => {
             let open = c;
@@ -222,8 +224,7 @@ fn scan_value_end(b: &[u8], p: usize) -> Result<usize> {
         // 无引号原语：number / true / false / null
         _ => {
             let mut i = p;
-            while i < b.len()
-                && !matches!(b[i], b',' | b']' | b'}' | b' ' | b'\t' | b'\r' | b'\n')
+            while i < b.len() && !matches!(b[i], b',' | b']' | b'}' | b' ' | b'\t' | b'\r' | b'\n')
             {
                 i += 1;
             }
@@ -234,7 +235,12 @@ fn scan_value_end(b: &[u8], p: usize) -> Result<usize> {
 
 /// 在对象字面量（区间 `[obj_start, obj_end)`，`obj_start` 指向 `{`）中查找名为 `name` 的
 /// 成员，返回其值的字节区间 `[start, end)`。
-fn find_member_span(b: &[u8], obj_start: usize, obj_end: usize, name: &str) -> Result<(usize, usize)> {
+fn find_member_span(
+    b: &[u8],
+    obj_start: usize,
+    obj_end: usize,
+    name: &str,
+) -> Result<(usize, usize)> {
     let mut i = skip_ws(b, obj_start + 1);
     while i < obj_end {
         i = skip_ws(b, i); // 跳过前一个成员后的空白（美化输出在逗号后换行缩进）
@@ -278,7 +284,12 @@ fn locate_entry_object(raw: &[u8], index: usize) -> Result<(usize, usize)> {
     loop {
         p = skip_ws(raw, p);
         match raw.get(p) {
-            Some(b']') => return Err(KeymapError::Validation(format!("第 {} 条不存在", index + 1))),
+            Some(b']') => {
+                return Err(KeymapError::Validation(format!(
+                    "第 {} 条不存在",
+                    index + 1
+                )))
+            }
             Some(b',') => {
                 p += 1;
             }
@@ -416,7 +427,8 @@ pub fn list_backups(target: &Path) -> Vec<PathBuf> {
         let Some(n) = p.file_name().and_then(|s| s.to_str()) else {
             continue;
         };
-        let is_bak = n == format!("{base}.bak") || n.ends_with(".bak") && n.starts_with(&format!("{base}."));
+        let is_bak =
+            n == format!("{base}.bak") || n.ends_with(".bak") && n.starts_with(&format!("{base}."));
         if is_bak {
             v.push(p);
         }
@@ -441,8 +453,7 @@ pub fn restore_backup(backup: &Path, target: &Path) -> Result<()> {
 
 /// 删除一个备份文件（供备份管理用）。
 pub fn delete_backup(path: &Path) -> Result<()> {
-    fs::remove_file(path)
-        .map_err(|e| KeymapError::Io(e, format!("无法删除备份 {}", ctx_of(path))))
+    fs::remove_file(path).map_err(|e| KeymapError::Io(e, format!("无法删除备份 {}", ctx_of(path))))
 }
 
 fn mtime(p: &Path) -> Option<std::time::SystemTime> {
@@ -599,7 +610,10 @@ mod tests {
         for b in [&b1, &b2] {
             let n = b.file_name().unwrap().to_str().unwrap();
             assert!(n.ends_with(".bak"), "历史备份以 .bak 结尾：{n}");
-            assert!(n.ends_with(&format!(".bak")) && n.contains("hist_main.json."), "带时间戳: {n}");
+            assert!(
+                n.ends_with(&format!(".bak")) && n.contains("hist_main.json."),
+                "带时间戳: {n}"
+            );
         }
         fs::remove_file(&p).ok();
         for b in [b1, b2] {
@@ -615,7 +629,7 @@ mod tests {
         fs::write(&p, "[]").unwrap();
         let h1 = create_history_backup(&p).unwrap();
         let auto = create_backup(&p).unwrap(); // 后创建，应排在前
-        // 干扰文件：非备份与同名不匹配 → 不应出现在列表
+                                               // 干扰文件：非备份与同名不匹配 → 不应出现在列表
         let noise = dir.join("wind.keymaps.json");
         let mplug = dir.join("other.keymaps.bak");
         fs::write(&noise, "[]").unwrap();
@@ -629,8 +643,14 @@ mod tests {
         let auton = auto.file_name().unwrap().to_str().unwrap().to_string();
         assert!(names.contains(&h1n), "应含历史备份：{h1n}");
         assert!(names.contains(&auton), "应含自动备份：{auton}");
-        assert!(!names.iter().any(|n| n == "wind.keymaps.json"), "非备份不列入");
-        assert!(!names.iter().any(|n| n == "other.keymaps.bak"), "其它文件备份不列入");
+        assert!(
+            !names.iter().any(|n| n == "wind.keymaps.json"),
+            "非备份不列入"
+        );
+        assert!(
+            !names.iter().any(|n| n == "other.keymaps.bak"),
+            "其它文件备份不列入"
+        );
         fs::remove_file(&p).ok();
         for f in list {
             fs::remove_file(f).ok();
@@ -645,7 +665,7 @@ mod tests {
         let f1 = KeymapFile::parse_json(r#"[{"keys":"<Ctrl+R>","action":"One"}]"#).unwrap();
         write_keymap(&p, &f1).unwrap();
         let h1 = create_history_backup(&p).unwrap(); // 备份 f1
-        // 修改当前文件为 f2（再备份历史 f2 供恢复）
+                                                     // 修改当前文件为 f2（再备份历史 f2 供恢复）
         let f2 = KeymapFile::parse_json(r#"[{"keys":"<Ctrl+R>","action":"Two"}]"#).unwrap();
         write_keymap(&p, &f2).unwrap();
         // 从 h1 恢复
@@ -700,7 +720,11 @@ mod tests {
         )
         .to_string();
         let (s, e) = locate_member_span(raw.as_bytes(), 1, "keys").unwrap();
-        assert_eq!(&raw.as_bytes()[s + 1..e - 1], b"<Ctrl+C>", "定位到第 2 条 keys 值");
+        assert_eq!(
+            &raw.as_bytes()[s + 1..e - 1],
+            b"<Ctrl+C>",
+            "定位到第 2 条 keys 值"
+        );
 
         let out = set_entry_keys(raw.as_bytes(), 1, "<Ctrl+M>").unwrap();
         let new_val = serde_json::to_string("<Ctrl+M>").unwrap();
@@ -730,7 +754,10 @@ mod tests {
         assert_eq!(keys[1], "<Ctrl+M>");
         assert_eq!(keys[2], "xyz");
         assert_eq!(
-            parsed.entries[1].extra.get("when").and_then(|v| v.get("run")),
+            parsed.entries[1]
+                .extra
+                .get("when")
+                .and_then(|v| v.get("run")),
             Some(&serde_json::Value::from(1)),
             "extra 字段 when 应原样保留"
         );
@@ -798,14 +825,22 @@ mod tests {
         )
         .to_string();
         let (s, e) = locate_member_span(raw.as_bytes(), 1, "modes").unwrap();
-        assert_eq!(&raw.as_bytes()[s + 1..e - 1], b"normal, local", "定位到第 2 条 modes 值");
+        assert_eq!(
+            &raw.as_bytes()[s + 1..e - 1],
+            b"normal, local",
+            "定位到第 2 条 modes 值"
+        );
 
         let out = set_entry_modes(raw.as_bytes(), 1, "command, widget").unwrap();
         let new_val = serde_json::to_string("command, widget").unwrap();
 
         assert!(out.starts_with(&[0xEF, 0xBB, 0xBF]), "BOM 应保留");
         assert_eq!(&out[..s], &raw.as_bytes()[..s], "替换点之前逐字节不变");
-        assert_eq!(&out[s + new_val.len()..], &raw.as_bytes()[e..], "替换点之后逐字节不变");
+        assert_eq!(
+            &out[s + new_val.len()..],
+            &raw.as_bytes()[e..],
+            "替换点之后逐字节不变"
+        );
         assert_eq!(&out[s..s + new_val.len()], new_val.as_bytes());
         assert_eq!(
             out.iter().filter(|&&b| b == b'\r').count(),
@@ -813,13 +848,20 @@ mod tests {
             "CRLF 数量不变"
         );
 
-        let body = String::from_utf8(out).unwrap().strip_prefix('\u{FEFF}').unwrap_or("").to_string();
+        let body = String::from_utf8(out)
+            .unwrap()
+            .strip_prefix('\u{FEFF}')
+            .unwrap_or("")
+            .to_string();
         let parsed = KeymapFile::parse_json(&body).unwrap();
         assert_eq!(parsed.entries[1].modes, "command, widget");
         assert_eq!(parsed.entries[0].modes, "normal");
         assert_eq!(parsed.entries[2].modes, "command");
         assert_eq!(
-            parsed.entries[1].extra.get("when").and_then(|v| v.get("run")),
+            parsed.entries[1]
+                .extra
+                .get("when")
+                .and_then(|v| v.get("run")),
             Some(&serde_json::Value::from(1)),
             "extra 字段 when 应原样保留"
         );
@@ -860,7 +902,10 @@ mod tests {
             let parsed = KeymapFile::parse_json(&String::from_utf8(out).unwrap()).unwrap();
             assert_eq!(parsed.entries[i].modes, "normal", "第 {i} 条 modes 应落地");
             assert_eq!(parsed.entries[i].keys, e.keys, "第 {i} 条 keys 应保真");
-            assert_eq!(parsed.entries[i].action, e.action, "第 {i} 条 action 应保真");
+            assert_eq!(
+                parsed.entries[i].action, e.action,
+                "第 {i} 条 action 应保真"
+            );
             assert_eq!(
                 parsed.entries[i].extra.get("when"),
                 e.extra.get("when"),
@@ -877,13 +922,15 @@ mod tests {
         // 而非静默放弃；其它字段/嵌套结构/键值须保持可解析且保真。
         let raw = b"[{\"keys\":\"<Ctrl+N>\",\"when\":{\"run\":1},\"action\":\"A\"}]".to_vec();
         let out = set_entry_modes(&raw, 0, "normal").unwrap();
-        let parsed =
-            KeymapFile::parse_json(&String::from_utf8(out.clone()).unwrap()).unwrap();
+        let parsed = KeymapFile::parse_json(&String::from_utf8(out.clone()).unwrap()).unwrap();
         assert_eq!(parsed.entries[0].modes, "normal", "缺失时应新增 modes 字段");
         assert_eq!(parsed.entries[0].keys, "<Ctrl+N>");
         assert_eq!(parsed.entries[0].action.as_deref(), Some("A"));
         assert_eq!(
-            parsed.entries[0].extra.get("when").and_then(|v| v.get("run")),
+            parsed.entries[0]
+                .extra
+                .get("when")
+                .and_then(|v| v.get("run")),
             Some(&serde_json::Value::from(1)),
             "新增字段不应破坏嵌套 extra"
         );
@@ -893,6 +940,9 @@ mod tests {
         let parsed2 = KeymapFile::parse_json(&String::from_utf8(out2).unwrap()).unwrap();
         assert_eq!(parsed2.entries[0].modes, "normal");
         // 越界下标仍应报错。
-        assert!(set_entry_modes(&raw, 5, "normal").is_err(), "越界下标应报错");
+        assert!(
+            set_entry_modes(&raw, 5, "normal").is_err(),
+            "越界下标应报错"
+        );
     }
 }

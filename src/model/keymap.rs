@@ -236,7 +236,9 @@ pub fn normalize_keys(s: &str) -> String {
         let mut rest = s;
         while let Some(open) = rest.find('<') {
             let after = &rest[open + 1..];
-            let Some(close_rel) = after.find('>') else { break };
+            let Some(close_rel) = after.find('>') else {
+                break;
+            };
             out.push_str(&normalize_angle(&after[..close_rel]));
             rest = &after[close_rel + 1..];
         }
@@ -589,10 +591,13 @@ mod tests {
     #[test]
     fn modes_has_matches_case_insensitively() {
         assert!(modes_has("normal, local", "normal"));
-        assert!(modes_has("normal, Remote", "remote"), "Remote 应视为 remote");
+        assert!(
+            modes_has("normal, Remote", "remote"),
+            "Remote 应视为 remote"
+        );
         assert!(!modes_has("normal, local", "widget"));
         assert!(!modes_has("", "normal"), "空串不含任何模式");
-        assert!(!modes_has("," , "normal"), "逗号空 token 不匹配");
+        assert!(!modes_has(",", "normal"), "逗号空 token 不匹配");
     }
 
     #[test]
@@ -600,7 +605,10 @@ mod tests {
         // 开：已含大小写等价写法则保持原样；未含则追加到末尾并保留已有 token
         let mut m = "normal, Remote".to_string();
         toggle_mode(&mut m, "remote", true);
-        assert_eq!(m, "normal, Remote", "已有 Remote 时开启应保持原写法（幂等）");
+        assert_eq!(
+            m, "normal, Remote",
+            "已有 Remote 时开启应保持原写法（幂等）"
+        );
         let mut m5 = "normal".to_string();
         toggle_mode(&mut m5, "widget", true);
         assert_eq!(m5, "normal, widget");

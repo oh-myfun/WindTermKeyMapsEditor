@@ -63,8 +63,16 @@ fn action_script_counts_match_expected() {
 fn round_trip_preserves_all_values() {
     let original = read_keymap(sample_path().as_path()).unwrap();
     // 样本含快捷键以外的字段（when/map），必须在解析后仍保留，才不会在保存时丢失。
-    let when = original.entries.iter().filter(|e| e.extra.contains_key("when")).count();
-    let map = original.entries.iter().filter(|e| e.extra.contains_key("map")).count();
+    let when = original
+        .entries
+        .iter()
+        .filter(|e| e.extra.contains_key("when"))
+        .count();
+    let map = original
+        .entries
+        .iter()
+        .filter(|e| e.extra.contains_key("map"))
+        .count();
     assert!(when >= 150, "真实样本应含大量 when 字段，实际 = {when}");
     assert!(map >= 4, "真实样本应含 map 字段，实际 = {map}");
     let json = original.to_json_string().unwrap();
