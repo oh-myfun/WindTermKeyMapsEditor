@@ -1,6 +1,6 @@
 [package]
 name = "windterm-keymaps-editor"
-version = "0.9.0"
+version = "1.0.0"
 edition = "2021"
 rust-version = "1.74"
 description = "WindTerm 快捷键配置文件（wind.keymaps）可视化编辑器 —— 轻量、简洁、美观、高效"
