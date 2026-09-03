@@ -167,7 +167,7 @@ fn run_selftest(file: Option<&Path>) -> i32 {
     if !is_timestamped_backup_name(base, nname) {
         return emit_fail(&mut log, format!("备份名应带时间戳，实际：{nname}"));
     }
-    log.push(format!("[OK] 带时间戳备份已生成：{nname}").into());
+    log.push(format!("[OK] 带时间戳备份已生成：{nname}"));
 
     // 4) 重载核对修改生效
     let reloaded = match read_keymap(&work) {

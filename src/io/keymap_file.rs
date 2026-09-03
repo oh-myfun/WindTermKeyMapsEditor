@@ -611,7 +611,7 @@ mod tests {
             let n = b.file_name().unwrap().to_str().unwrap();
             assert!(n.ends_with(".bak"), "历史备份以 .bak 结尾：{n}");
             assert!(
-                n.ends_with(&format!(".bak")) && n.contains("hist_main.json."),
+                n.ends_with(".bak") && n.contains("hist_main.json."),
                 "带时间戳: {n}"
             );
         }
