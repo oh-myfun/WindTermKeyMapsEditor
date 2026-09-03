@@ -471,8 +471,7 @@ fn emacs_reloc_plan(entries: &[KeymapEntry]) -> Vec<Vec<EmacsRelocPlan>> {
         // modes/上下文区分），拆散到两个键反而改变原语义。首个占用者计算空闲目标后，
         // 同键其余占用者直接复用。
         let mut dst_by_orig: HashMap<String, String> = HashMap::new();
-        for i in 0..entries.len() {
-            let e = &entries[i];
+        for (i, e) in entries.iter().enumerate() {
             if key_matches(&e.keys, target) && e.action.as_deref() != Some(op) {
                 let orig = bare_key(&e.keys).to_owned();
                 let dst = match dst_by_orig.get(&orig) {
@@ -802,15 +801,12 @@ impl EditorApp {
         let Some(raw0) = self.raw.clone() else {
             return;
         };
-        match set_entry_modes(&raw0, d.index, &d.modes) {
-            Ok(nr) => {
-                if let Ok(f) = parse_keymap_bytes(&nr) {
-                    self.raw = Some(nr);
-                    self.file = f;
-                    self.dirty = true;
-                }
+        if let Ok(nr) = set_entry_modes(&raw0, d.index, &d.modes) {
+            if let Ok(f) = parse_keymap_bytes(&nr) {
+                self.raw = Some(nr);
+                self.file = f;
+                self.dirty = true;
             }
-            Err(_) => {}
         }
     }
 
@@ -1620,7 +1616,7 @@ impl EditorApp {
             let rec_text = if *recording {
                 RichText::new(T.ed_keys_recording).strong()
             } else {
-                RichText::new(T.ed_keys_record).into()
+                RichText::new(T.ed_keys_record)
             };
             let rec_tip = T.ed_keys_record_tip;
             if ui.button(rec_text).on_hover_text(rec_tip).clicked() {

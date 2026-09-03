@@ -126,6 +126,7 @@ pub fn modes_has(modes: &str, mode: &str) -> bool {
 /// - `on = true`：若已有大小写等价的 token（如 `Remote` 之于 `remote`）则保持原写法不动，
 ///   否则在末尾追加该模式；
 /// - `on = false`：移除所有与它大小写等价的 token。
+///
 /// 其它未知/自定义 token 一律保留，以免破坏用户手写的特殊写法。
 pub fn toggle_mode(modes: &mut String, mode: &str, on: bool) {
     let has = modes

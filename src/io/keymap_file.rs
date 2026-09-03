@@ -70,7 +70,7 @@ pub fn parse_keymap_bytes(raw: &[u8]) -> Result<KeymapFile> {
     let text = std::str::from_utf8(body).map_err(|_| {
         KeymapError::Io(
             io::Error::new(io::ErrorKind::InvalidData, "非 UTF-8 编码"),
-            format!("文件不是 UTF-8 编码"),
+            "文件不是 UTF-8 编码".to_string(),
         )
     })?;
     if text.trim().is_empty() {
