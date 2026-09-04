@@ -59,6 +59,34 @@ fn harness_sized(entries: Vec<KeymapEntry>, size: [f32; 2]) -> Harness<'static, 
         .build_eframe(|_cc| app_with(entries))
 }
 
+/// 主表末列「快捷键」是 remainder 列，负责吸收剩余宽。若权重计算把它饿死（宽≈0），
+/// 表头/键值单元格会因超窄被裁掉 —— 这正是「缩窄其它列后右侧留白/滚动条左移」的外观回归。
+/// 用多个窗口宽度渲染，断言所有键值单元格仍然可见，lock 住 remainder 不挨饿。
+#[test]
+fn keys_column_not_starved_across_window_widths() {
+    let entries = vec![
+        ent("<Ctrl+F>", "Text.Find"),
+        ent("<Ctrl+A>", "Text.SelectAll"),
+        ent("<Ctrl+C>", "Text.Copy"),
+        ent("<Ctrl+Shift+K>", "Terminal.Clear"),
+    ];
+    for width in [520.0, 760.0, 980.0, 1280.0] {
+        let mut h = harness_sized(entries.clone(), [width, 660.0]);
+        h.step();
+        h.step();
+        assert_eq!(
+            keys_cell_labels(&h),
+            vec![
+                "<Ctrl+F>".to_string(),
+                "<Ctrl+A>".to_string(),
+                "<Ctrl+C>".to_string(),
+                "<Ctrl+Shift+K>".to_string(),
+            ],
+            "窗口宽 {width} 下快捷键列不应被 remainder 饿死"
+        );
+    }
+}
+
 /// 表格中所有 keys 单元格（形如 `<Ctrl+..>` / `(?P<..>` 的可点击按钮）的 label，按树顺序。
 fn keys_cell_labels(h: &Harness<'_, EditorApp>) -> Vec<String> {
     h.query_all_by(|n| {
@@ -919,344 +947,58 @@ fn zoom_event_changes_pixels_per_point() {
     );
 }
 
-// ---------- 一键 Emacs 风格弹窗 ----------
+// ---------- 一键去远程冲突 ----------
 
+/// 回归断言：去远程冲突弹窗完全参考一键 Emacs 风格——工具栏按钮打开、完整清单表格、
+/// 「修改后生效模式」列可点开子编辑窗、复位恢复默认（去掉 remote）、一键应用只删 remote。
 #[test]
-fn emacs_modal_renders_full_editable_list_and_applies() {
+fn remote_modal_renders_full_list_and_applies() {
+    // 语义操作已绑在 Emacs 键上且含 remote；另有一个占用者条目含 remote。二者都应进清单。
     let mut h = harness_for(vec![
-        ent("<Ctrl+W>", "Window.CloseActiveView"), // 未收录键：不做让位
-        ent("<Alt+B>", "Window.ShowPaletteMultiplexer"), // 语义键占用者
-        ent("<Ctrl+Left>", "Text.MoveToPreviousWordStart"), // 语义操作 → 将被绑到 Alt+B
+        ent("<Ctrl+W>", "Window.CloseActiveView"),
+        KeymapEntry {
+            keys: "<Alt+B>".into(),
+            modes: "normal, command, remote".into(),
+            action: Some("Text.MoveToPreviousWordStart".into()),
+            script: None,
+            extra: Default::default(),
+        },
+        KeymapEntry {
+            keys: "<Ctrl+T>".into(), // 占用者，非语义操作，也含 remote
+            modes: "local, remote".into(),
+            action: Some("Window.BrowseCurrentTitleDirectory".into()),
+            script: None,
+            extra: Default::default(),
+        },
+        ent("<Ctrl+Left>", "Text.MoveToPreviousChar"),
     ]);
     h.step();
-    h.get_by_label("Emacs风格").click();
-    h.step();
-    h.step();
-    h.step();
-    h.step(); // Modal（Area）首帧 sizing，多跑几帧稳定渲染
-              // 弹窗为每条预设渲染一行「复位」按钮；此样本中 Alt+B 被其它操作占用，生成一行
-              // 独立的「让位行」（复位按钮禁用）：11 个主行 + 1 个让位行。
-              // （注：egui/kittest 下带 color 的 RichText label 提取为空串，故改用按钮计数断言“完整清单”。）
-              // 只统计“复位”按钮（表头第 5 列现也显示“复位”标题，那是 Label 非按钮）。
+    h.get_by_label("去远程冲突").click();
+    for _ in 0..8 {
+        h.step();
+    }
+    // 弹窗只列出「该 Emacs 键上含 remote 的绑定」：2 条 → 2 个「复位」按钮。
     let reset_count = h
         .query_all_by(|n| {
             n.role() == egui::accesskit::Role::Button && n.label().is_some_and(|l| l == "复位")
         })
         .count();
     assert_eq!(
-        reset_count,
-        windterm_keymaps_editor::app::EMACS_PRESET.len() + 1,
-        "弹窗应列出完整修改清单（11 主行 + 1 让位行），实际 {reset_count}"
+        reset_count, 2,
+        "两条含 remote 的绑定应各占一行，实际 {reset_count}"
     );
     assert!(
         h.query_by_label_contains("一键应用").is_some(),
         "弹窗应有「一键应用」按钮"
     );
-    h.get_by_label("一键应用").click_accesskit();
-    h.step();
-    h.step(); // 应用后关闭弹窗的重渲染
-              // 未收录的 Ctrl+W 不做让位，保持原键；Alt+B 占用者移位，语义操作绑上 Alt+B。
-    assert_eq!(
-        h.state().file.entries[0].keys,
-        "<Ctrl+W>",
-        "未收录键不做让位"
-    );
-    assert_eq!(h.state().file.entries[1].keys, "<Alt+Shift+B>");
-    assert_eq!(h.state().file.entries[2].keys, "<Alt+B>");
-    assert_eq!(
-        h.state().file.entries[2].action.as_deref(),
-        Some("Text.MoveToPreviousWordStart")
-    );
-    assert!(h.state().dirty, "一键应用后应标记未保存");
-}
-
-/// 回归断言：一键 Emacs 弹窗的 6 列表格必须完整落在视口内（最右侧「复位」列不溢出）。
-/// 此前 Grid 的 add_sized 与 Table 的 exact 都曾被 Modal 的超大 available 撑宽，把
-/// 「修改后/复位」列挤出窗口右缘；本用例在应用自身坐标系断言复位按钮右缘 < 视口宽，
-/// 防止列布局回归。
-#[test]
-fn emacs_modal_columns_fit_within_viewport() {
-    let mut h = harness_for(vec![
-        ent("<Ctrl+W>", "Window.CloseActiveView"),
-        ent("<Alt+B>", "Window.ShowPaletteMultiplexer"),
-        ent("<Ctrl+Left>", "Text.MoveToPreviousWordStart"),
-    ]);
-    h.step();
-    h.get_by_label("Emacs风格").click();
-    for _ in 0..8 {
-        h.step();
-    }
-    // 最右侧「复位」按钮的右缘应落在视口(980x660)内
-    let max_right = h
-        .query_all_by(|n| {
-            n.role() == egui::accesskit::Role::Button && n.label().as_deref() == Some("复位")
-        })
-        .map(|n| n.rect().max.x)
-        .fold(0.0_f32, f32::max);
-    assert!(
-        max_right < 980.0,
-        "Emacs 弹窗表格最右列(复位)右缘 {max_right} 超出视口宽 980，列被挤出窗口"
-    );
-    assert!(
-        max_right > 400.0,
-        "Emacs 弹窗最右列(复位)右缘 {max_right} 过小，5 列可能未完整展开"
-    );
-}
-
-/// 回归断言：高 ppp / 窄窗底下，Emacs 弹窗的 6 列（描述列用 remainder 吸收剩余宽）应
-/// 仍完整留在视口内、右侧不再多出横向滚动/孤立分隔线。此前各列固定宽且描述列不吸收，
-/// 一旦弹窗被 ppp 收缩到 < 列总宽，右侧「生效模式/修改后/复位」列就被挤出、出现横向
-/// 滚动条（用户感知为“最右边多了一列分隔线”）。
-#[test]
-fn emacs_modal_columns_stay_within_narrow_viewport() {
-    let mut h = Harness::builder()
-        .with_size([640.0, 660.0]) // 模拟高 ppp 下的窄弹窗
-        .build_eframe(|_cc| {
-            app_with(vec![
-                ent("<Ctrl+W>", "Window.CloseActiveView"),
-                ent("<Alt+B>", "Window.ShowPaletteMultiplexer"),
-                ent("<Ctrl+Left>", "Text.MoveToPreviousWordStart"),
-            ])
-        });
-    h.step();
-    h.get_by_label("Emacs风格").click();
-    for _ in 0..10 {
-        h.step();
-    }
-    let resets: Vec<_> = h
-        .query_all_by(|n| {
-            n.role() == egui::accesskit::Role::Button && n.label().as_deref() == Some("复位")
-        })
-        .collect();
-    assert!(!resets.is_empty(), "窄弹窗下也应有复位按钮并完整显示");
-    let max_right = resets
-        .iter()
-        .map(|n| n.rect().max.x)
-        .fold(0.0_f32, f32::max);
-    assert!(
-        max_right < 640.0,
-        "窄视口(640)下最左列仍被横向挤出? 复位右缘 {max_right} >= 视口宽"
-    );
-    // 复位列必须确实出现在靠右位置（各固定列都展开了，而不是被裁剪到看不见）。
-    assert!(
-        max_right > 300.0,
-        "窄视口下复位右缘 {max_right} 过小，后面的列疑似被挤出/未展开"
-    );
-}
-
-/// 回归断言：Emacs 弹窗列宽随弹窗宽按比例分配。窗口收窄时弹窗默认宽随之变小，
-/// 各内容列按权重同步收缩（复位列左缘显著左移）；若列宽固定，两个窗口宽度下
-/// 复位列左缘只会因弹窗居中偏移约 28px，远小于比例分配的位移。
-#[test]
-fn emacs_modal_columns_scale_with_dialog_width() {
-    let entries = vec![
-        ent("<Ctrl+W>", "Window.CloseActiveView"),
-        ent("<Alt+B>", "Window.ShowPaletteMultiplexer"),
-        ent("<Ctrl+Left>", "Text.MoveToPreviousWordStart"),
-    ];
-    let reset_left_x = |win_w: f32| -> f32 {
-        let mut h = harness_sized(entries.clone(), [win_w, 660.0]);
-        h.step();
-        h.get_by_label("Emacs风格").click();
-        for _ in 0..10 {
-            h.step();
-        }
-        h.query_all_by(|n| {
-            n.role() == egui::accesskit::Role::Button && n.label().as_deref() == Some("复位")
-        })
-        .map(|n| n.rect().min.x)
-        .fold(f32::MAX, f32::min)
-    };
-    let x_wide = reset_left_x(980.0); // 弹窗默认宽 900
-    let x_narrow = reset_left_x(700.0); // 弹窗默认宽 = 700-24 = 676
-    assert!(
-        x_wide - x_narrow > 150.0,
-        "窄弹窗下内容列应按比例收缩（复位列左缘应显著左移），宽 {x_wide} vs 窄 {x_narrow}"
-    );
-}
-
-/// 回归断言：Emacs 弹窗「修改后」列点击应打开子编辑窗（复用主窗口快捷键录制控件），
-/// 编辑后确认写回该行草稿；同时保持表单底部按钮的计数基线（子窗含「确定/取消」按钮，
-/// 不混入主表单的行计数，也不破坏旧“复位按钮=预设条数”的断言）。
-#[test]
-fn emacs_after_col_reuses_shortcut_recorder() {
-    let mut h = harness_for(vec![
-        ent("<Ctrl+W>", "Window.CloseActiveView"),
-        ent("<Alt+B>", "Window.ShowPaletteMultiplexer"),
-        ent("<Ctrl+Left>", "Text.MoveToPreviousWordStart"),
-    ]);
-    h.step();
-    h.get_by_label("Emacs风格").click();
-    for _ in 0..8 {
-        h.step();
-    }
-    // 点击第一行（<Ctrl+A>）的“修改后”值按钮 → 应弹出子编辑窗。
-    h.get_by_label("<Ctrl+A>").click();
-    for _ in 0..4 {
-        h.step();
-    }
-    assert!(
-        h.query_by_label_contains("修改本行快捷键").is_some(),
-        "点击「修改后」应打开子编辑窗"
-    );
-    // 子窗内输入框：选中(Remove →) 替换为录制到的组合键。
-    let input = keys_input(&h);
-    input.focus();
-    h.step();
-    // 走录制路径验证与主窗口一致：点击「录制」后按键捕获。
-    h.get_by_label("录制").click();
-    h.step();
-    h.key_press_modifiers(egui::Modifiers::CTRL, egui::Key::J);
-    h.step();
-    // 确定 → 写回第一行草稿为 <Ctrl+J>
-    h.get_by_label("确定").click_accesskit();
-    h.step();
-    h.step();
-    // 子窗关闭后回到主 Emacs 弹窗，草稿应已被写回。
-    assert!(
-        h.query_by_label_contains("修改本行快捷键").is_none(),
-        "确定后子编辑窗应关闭"
-    );
-    let draft = h.state().emacs_draft.as_ref().expect("Emacs 弹窗应仍打开");
-    assert_eq!(
-        draft.new_keys[0], "<Ctrl+J>",
-        "录制后确定应写回第一行「修改后」为新键"
-    );
-    // 取消路径：改另一行后取消，不写回。
-    h.get_by_label("<Ctrl+E>").click();
-    for _ in 0..4 {
-        h.step();
-    }
-    h.get_by_label("取消").click_accesskit();
-    h.step();
-    h.step();
-    let draft = h
-        .state()
-        .emacs_draft
-        .as_ref()
-        .expect("取消后 Emacs 弹窗应仍打开");
-    assert_eq!(
-        draft.new_keys[1], "<Ctrl+E>",
-        "取消后该行「修改后」应保持原值，不回退也不改写"
-    );
-}
-
-/// 回归断言：让位行的「修改后快捷键」列支持编辑——点击应打开「修改让位目标」子编辑窗，
-/// 确定后写回 `emacs_draft.reloc[row]`，应用时按该自定义目标位移位（与自动推演目标一致地为
-/// 占用者让位，但允许用户改写）。
-#[test]
-fn emacs_reloc_row_after_key_is_editable() {
-    let mut h = harness_for(vec![
-        ent("<Alt+B>", "Window.ShowPaletteMultiplexer"), // Alt+B 的占用者 → 让位行
-        ent("<Ctrl+Left>", "Text.MoveToPreviousWordStart"), // Alt+B 语义操作
-    ]);
-    h.step();
-    h.get_by_label("Emacs风格").click();
-    for _ in 0..8 {
-        h.step();
-    }
-    // Alt+B 语义行（index 4）的修改后快捷键显示 <Alt+B>；其「让位行」占用者的修改后快捷键
-    // 显示自动推演目标 <Alt+Shift+B>（全树唯一，可精确定位）。
-    h.get_by_label("<Alt+Shift+B>").click();
-    for _ in 0..4 {
-        h.step();
-    }
-    assert!(
-        h.query_by_label_contains("修改让位目标").is_some(),
-        "点击让位行「修改后快捷键」应打开「修改让位目标」子编辑窗"
-    );
-    // 走录制路径改写为新目标键。
-    let input = keys_input(&h);
-    input.focus();
-    h.step();
-    h.get_by_label("录制").click();
-    h.step();
-    h.key_press_modifiers(egui::Modifiers::CTRL, egui::Key::J);
-    h.step();
-    h.get_by_label("确定").click_accesskit();
-    h.step();
-    h.step();
-    let draft = h
-        .state()
-        .emacs_draft
-        .as_ref()
-        .expect("子编辑窗关闭后 Emacs 弹窗应仍打开");
-    assert_eq!(
-        draft.reloc[4].as_str(),
-        "<Ctrl+J>",
-        "让位行改写的新目标键应写回 emacs_draft.reloc[4]"
-    );
-}
-
-/// 主表「生效模式」列：点击单元格弹独立编辑窗，改 modes 后确定写回并标记未保存。
-#[test]
-fn main_table_modes_cell_opens_editor_and_writes_back() {
-    let mut h = harness_for(vec![ent("<Ctrl+C>", "Text.Copy")]);
-    h.step();
-    // 主表「生效模式」列显示条目 modes = "normal"。
-    assert!(
-        h.query_by_label("normal").is_some(),
-        "主表应有「生效模式」列"
-    );
-    // 点击 modes 单元格（此时无弹窗，「normal」唯一）→ 弹出生效模式编辑窗。
-    h.get_by_label("normal").click();
-    h.step();
-    h.step();
-    assert!(
-        h.query_by_label_contains("编辑生效模式").is_some(),
-        "点击「生效模式」列应弹出编辑窗"
-    );
-    // 勾选 command → 追加为 normal, command。
-    click_modes_checkbox(&mut h, "command");
-    h.step();
-    h.get_by_label("确定").click_accesskit();
-    h.step();
-    h.step();
-    assert_eq!(h.state().file.entries[0].modes, "normal, command");
-    assert!(h.state().dirty, "修改生效模式后应标记未保存");
-}
-
-/// Emacs 弹窗「修改后生效模式」列：所有行都可编辑。语义行单元格（Binding 槽）可点出
-/// 子编辑窗，编辑结果写回草稿、应用时改到目标条目；释放行/让位行不再只读。不写「不修改」。
-#[test]
-fn emacs_modes_col_editable_semantic_row() {
-    // 语义行目标条目用唯一 modes，便于在 Emacs 弹窗内定位其「生效模式」单元格。
-    let target = KeymapEntry {
-        keys: "<Ctrl+Left>".into(),
-        modes: "normal, command".into(),
-        action: Some("Text.MoveToPreviousWordStart".into()), // Alt+B 行（预设 index 4）
-        script: None,
-        extra: Default::default(),
-    };
-    let mut h = harness_for(vec![
-        ent("<Ctrl+W>", "Window.CloseActiveView"), // 释放行占用者
-        ent("<Alt+B>", "Window.ShowPaletteMultiplexer"), // 语义键占用者
-        target,
-    ]);
-    h.step();
-    h.get_by_label("Emacs风格").click();
-    for _ in 0..8 {
-        h.step();
-    }
-    // 确认无残留「不修改」按钮（该表述已弃用，改为各列可编辑并显示完整 modes）。
-    let unmod_count = h
-        .query_all_by(|n| {
-            n.role() == egui::accesskit::Role::Button && n.label().is_some_and(|l| l == "不修改")
-        })
-        .count();
-    assert_eq!(
-        unmod_count, 0,
-        "释放行不应再显示「不修改」按钮，实际 {unmod_count}"
-    );
-    // 语义行（Alt+B）的「生效模式」单元格显示目标条目的新生效模式（默认 = 旧 modes + remote）。
-    // 该字符串在树中先出现于主表后出现于 Emacs 弹窗（弹窗 layer 更后），取最后一个即弹窗内的单元格。
+    // Alt+B 语义行「修改后生效模式」默认 = 去掉 remote（normal, command）。
     let mut cells: Vec<_> = h
         .query_all_by(|n| {
             n.role() == egui::accesskit::Role::Button
-                && n.label().as_deref() == Some("normal, command, remote")
+                && n.label().as_deref() == Some("normal, command")
         })
         .collect();
-    let cell = cells.pop().expect("应有语义行「生效模式」单元格");
+    let cell = cells.pop().expect("应有 Alt+B 行「修改后生效模式」单元格");
     cell.click();
     for _ in 0..4 {
         h.step();
@@ -1264,21 +1006,21 @@ fn emacs_modes_col_editable_semantic_row() {
     assert!(
         h.query_by_label_contains("编辑本行目标的生效模式")
             .is_some(),
-        "点击语义行「生效模式」应打开子编辑窗"
+        "点击「修改后生效模式」应打开子编辑窗"
     );
-    // 取消勾选 command → modes 变为 normal, remote（预填含 remote）。
+    // 取消勾选 command → 修改后 modes 变为 normal。
     click_modes_checkbox(&mut h, "command");
     h.step();
     h.get_by_label("确定").click_accesskit();
     h.step();
     h.step();
-    let draft = h.state().emacs_draft.as_ref().expect("Emacs 弹窗应仍打开");
+    let draft = h.state().remote_draft.as_ref().expect("弹窗应仍打开");
     assert_eq!(
-        draft.new_modes[4].as_deref(),
-        Some("normal, remote"),
-        "语义行模式编辑结果应写回草稿（Alt+B = index 4）"
+        draft.new_modes[0].as_deref(),
+        Some("normal"),
+        "Alt+B 是首条规则（index 0），模式编辑结果应写回草稿"
     );
-    // 一键应用：目标条目 modes 一并更新，键绑定到 Alt+B。
+    // 一键应用：两条含 remote 的绑定 remote 都被去除，其它条目不动。
     h.get_by_label("一键应用").click_accesskit();
     h.step();
     h.step();
@@ -1289,47 +1031,87 @@ fn emacs_modes_col_editable_semantic_row() {
         .iter()
         .find(|e| e.action.as_deref() == Some("Text.MoveToPreviousWordStart"))
         .expect("应有该语义条目");
-    assert_eq!(
-        target.modes, "normal, remote",
-        "应用后语义条目 modes 应更新"
-    );
-    assert_eq!(target.keys, "<Alt+B>", "应用后语义条目标键应为 Alt+B");
+    assert_eq!(target.modes, "normal", "应用后语义条目 modes 应去掉 remote");
+    assert_eq!(target.keys, "<Alt+B>", "应用后键位不变");
+    let occ = h
+        .state()
+        .file
+        .entries
+        .iter()
+        .find(|e| e.action.as_deref() == Some("Window.BrowseCurrentTitleDirectory"))
+        .expect("应有占用者条目");
+    assert_eq!(occ.modes, "local", "占用者含 remote 也应一并去除");
+    assert_eq!(occ.keys, "<Ctrl+T>", "占用者键位不变");
+    assert!(h.state().dirty, "一键应用后应标记未保存");
 }
 
-/// 回归断言：让位行（被移位的占用者）的「修改后生效模式」列支持编辑——点击打开子编辑窗
-/// （Reloc 槽），确定后写回 `emacs_draft.reloc_modes[row]`；一键应用时把该占用者条目的
-/// modes 一并改写，并移出被让出的 Emacs 键。
+/// 回归断言：无 remote 冲突时，去远程冲突弹窗显示「无需处理」提示，不渲染清单表格。
 #[test]
-fn emacs_reloc_row_modes_is_editable() {
-    // Alt+B 语义键被占用 → 生成让位行；占用者 modes 用唯一值 "command" 便于定位。
-    let occupier = KeymapEntry {
-        keys: "<Alt+B>".into(),
-        modes: "command".into(),
-        action: Some("Window.ShowPaletteMultiplexer".into()),
-        script: None,
-        extra: Default::default(),
-    };
-    let target = KeymapEntry {
-        keys: "<Ctrl+Left>".into(),
-        modes: "normal".into(),
-        action: Some("Text.MoveToPreviousWordStart".into()), // Alt+B 语义操作（预设 index 4）
-        script: None,
-        extra: Default::default(),
-    };
-    let mut h = harness_for(vec![occupier, target]);
+fn remote_modal_shows_none_when_no_conflict() {
+    let mut h = harness_for(vec![
+        ent("<Alt+B>", "Window.ShowPaletteMultiplexer"),
+        ent("<Ctrl+Left>", "Text.MoveToPreviousWordStart"),
+    ]);
     h.step();
-    h.get_by_label("Emacs风格").click();
+    h.get_by_label("去远程冲突").click();
     for _ in 0..8 {
         h.step();
     }
-    // 让位行「修改后生效模式」显示占用者当前 modes="command"。该字符串的按钮在主表与弹窗
-    // 各出现一次，弹窗 layer 更后，取最后一个即弹窗让位行单元格。
-    let mut cells: Vec<_> = h
+    assert!(
+        h.query_by_label_contains("无需处理").is_some(),
+        "无冲突时应显示「无需处理」提示"
+    );
+    // 无清单表格：不应有「复位」按钮。
+    let reset_count = h
         .query_all_by(|n| {
-            n.role() == egui::accesskit::Role::Button && n.label().as_deref() == Some("command")
+            n.role() == egui::accesskit::Role::Button && n.label().is_some_and(|l| l == "复位")
         })
-        .collect();
-    let cell = cells.pop().expect("应有让位行「修改后生效模式」单元格");
+        .count();
+    assert_eq!(reset_count, 0, "无冲突时不应渲染清单表格");
+}
+
+/// 回归断言：占用 Emacs 键、modes 为空（＝全局生效，含 remote）的条目也应出现在去远程
+/// 冲突清单中；一键应用后空 modes 补齐为其余全部模式，使该键不再拦截远程会话。
+#[test]
+fn remote_modal_lists_empty_modes_occupier_and_clears() {
+    let mut h = harness_for(vec![
+        ent("<Ctrl+W>", "Window.CloseActiveView"),
+        KeymapEntry {
+            keys: "<Alt+B>".into(),
+            modes: "".into(), // 空 modes：全局生效（含 remote）
+            action: Some("Window.ShowPaletteMultiplexer".into()),
+            script: None,
+            extra: Default::default(),
+        },
+        ent("<Ctrl+Left>", "Text.MoveToPreviousWordStart"), // 语义操作不占 Alt+B，不算冲突
+    ]);
+    h.step();
+    h.get_by_label("去远程冲突").click();
+    for _ in 0..8 {
+        h.step();
+    }
+    assert!(
+        h.query_by_label_contains("无需处理").is_none(),
+        "空 modes 占用 Emacs 键也构成远程冲突，不应显示「无需处理」"
+    );
+    // 只有 Alt+B 一行（含空 modes 占用者）。
+    let reset_count = h
+        .query_all_by(|n| {
+            n.role() == egui::accesskit::Role::Button && n.label().is_some_and(|l| l == "复位")
+        })
+        .count();
+    assert_eq!(
+        reset_count, 1,
+        "空 modes 的 Alt+B 应占一行，实际 {reset_count}"
+    );
+    // 该行「修改后生效模式」默认 = 补齐其余全部模式。
+    let cell = h
+        .query_all_by(|n| {
+            n.role() == egui::accesskit::Role::Button
+                && n.label().as_deref() == Some("normal, command, local, widget")
+        })
+        .next()
+        .expect("空 modes 行默认修改后模式应为其余四种模式");
     cell.click();
     for _ in 0..4 {
         h.step();
@@ -1337,58 +1119,25 @@ fn emacs_reloc_row_modes_is_editable() {
     assert!(
         h.query_by_label_contains("编辑本行目标的生效模式")
             .is_some(),
-        "点击让位行「修改后生效模式」应打开子编辑窗"
+        "点击「修改后生效模式」应打开子编辑窗"
     );
-    // 追加 remote → modes 变为 command, remote。
-    click_modes_checkbox(&mut h, "remote");
-    h.step();
-    h.get_by_label("确定").click_accesskit();
+    h.get_by_label("取消").click_accesskit();
     h.step();
     h.step();
-    let draft = h.state().emacs_draft.as_ref().expect("Emacs 弹窗应仍打开");
-    assert_eq!(
-        draft.reloc_modes[4].as_deref(),
-        Some("command, remote"),
-        "让位行模式编辑结果应写回草稿（Alt+B = index 4）"
-    );
-    // 一键应用：占用者移位并改写 modes。
+    // 一键应用：空 modes 转成明确的非 remote 全模式。
     h.get_by_label("一键应用").click_accesskit();
     h.step();
     h.step();
-    let occ = h
+    let target = h
         .state()
         .file
         .entries
         .iter()
         .find(|e| e.action.as_deref() == Some("Window.ShowPaletteMultiplexer"))
-        .expect("应有占用者条目");
-    assert_eq!(occ.modes, "command, remote", "应用后占用者 modes 应更新");
-    assert_ne!(occ.keys, "<Alt+B>", "应用后占用者应移出 Alt+B");
-}
-
-/// 回归断言：同一 Emacs 键被多个不同操作占用时（如 `<Ctrl+A>` 上同时有 `Editor.Save`
-/// 与 `Text.Save`），弹窗须为每个占用者各生成一行独立让位行，且每行描述都带【让位】标记。
-#[test]
-fn emacs_multiple_occupiers_each_get_reloc_row() {
-    let mut h = harness_for(vec![
-        ent("<Ctrl+A>", "Editor.Save"),
-        ent("<Ctrl+A>", "Text.Save"),
-        ent("<Home>", "Text.MoveToLineHome"),
-    ]);
-    h.step();
-    h.get_by_label("Emacs风格").click();
-    for _ in 0..8 {
-        h.step();
-    }
-    // 11 个主行 + 2 个让位行 = len + 2 个「复位」按钮。
-    let reloc_count = h
-        .query_all_by(|n| {
-            n.role() == egui::accesskit::Role::Button && n.label().as_deref() == Some("复位")
-        })
-        .count();
+        .expect("应有该占用者条目");
     assert_eq!(
-        reloc_count,
-        windterm_keymaps_editor::app::EMACS_PRESET.len() + 2,
-        "双占用者应各生成一行让位行，实际 {reloc_count}"
+        target.modes, "normal, command, local, widget",
+        "空 modes 条目一键应用后应补齐为其余全部模式"
     );
+    assert_eq!(target.keys, "<Alt+B>", "应用后键位不变");
 }
